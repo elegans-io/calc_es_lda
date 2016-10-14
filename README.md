@@ -29,7 +29,13 @@ Usage: LDA with ES data [options]
 ## Run with spark
 
 ```bash
-./scripts/run.sh [Options]
+sbt "sparkSubmit --class io.elegans.calc_es_lda.EsSparkApp -- --hostname <es hostname> --group_by_field <field for grouping> --search_path <index_name/type_name> --min_k <min_topics> --max_k <max_topics> --stopwordFile </path/of/stopword_list.txt> --outputDir </path/of/existing/empty/directory>"
+```
+
+e.g.
+
+```bash
+sbt "sparkSubmit --class io.elegans.calc_es_lda.EsSparkApp -- --hostname elastic-0.getjenny.com --group_by_field conversation --search_path english/question --min_k 10 --max_k 30 --stopwordFile /tmp/english_stopwords.txt --outputDir /tmp/lda_results"
 ```
 
 ## Output
