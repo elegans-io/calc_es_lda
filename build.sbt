@@ -21,14 +21,13 @@ libraryDependencies ++= Seq(
 )
 
 
-
 SparkSubmit.settings
 
 enablePlugins(JavaServerAppPackaging)
 
 // Assembly settings
-mainClass in Compile := Some("io.elegans.clustering.EsSparkApp")
-mainClass in assembly := Some("io.elegans.clustering.EsSparkApp")
+mainClass in Compile := Some("io.elegans.clustering.CalcLDA")
+mainClass in assembly := Some("io.elegans.clustering.CalcLDA")
 
 mappings in Universal ++= {
   // copy configuration files to config directory

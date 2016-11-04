@@ -25,7 +25,7 @@ import scala.collection.JavaConversions._
 
 import org.apache.spark.storage.StorageLevel
 
-object EsSparkApp {
+object CalcLDA {
 
   def createNLPPipeline(): StanfordCoreNLP = {
     val props = new Properties()
