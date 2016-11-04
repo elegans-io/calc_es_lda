@@ -6,7 +6,9 @@ Note: works with java 7 and 8 (not with jdk 9)
 
 sbt package
 
-## Execute
+## Classes
+
+### io.elegans.clustering.CalcLDA
 
 ```bash
 calculate LDA with data from an elasticsearch index.
@@ -30,19 +32,7 @@ Usage: LDA with ES data [options]
                            write the first n topic classifications per document  default: 10
 ```
 
-## Run with spark
-
-```bash
-sbt "sparkSubmit --class io.elegans.clustering.EsSparkApp -- --hostname <es hostname> --group_by_field <field for grouping> --search_path <index_name/type_name> --min_k <min_topics> --max_k <max_topics> --stopwordFile </path/of/stopword_list.txt> --outputDir </path/of/existing/empty/directory>"
-```
-
-e.g.
-
-```bash
-sbt "sparkSubmit --class io.elegans.clustering.EsSparkApp -- --hostname elastic-0.getjenny.com --group_by_field conversation --search_path english/question --min_k 10 --max_k 30 --stopwordFile /tmp/english_stopwords.txt --outputDir /tmp/lda_results"
-```
-
-## Output
+#### Output
 
 For each topic number (from min_k to max_k) the program will produce:
 * a list of topics with terms and weights -> (num_of_topics, topic_id, term_id, term, weight) e.g. (10,0,1862,help,0.12943777743269205)
@@ -66,4 +56,70 @@ K(7) LOGLIKELIHOOD(-4808667.540709441) LOG_PRIOR(-227.87874643463218) AVGLOGLIKE
 K(8) LOGLIKELIHOOD(-4778600.550597267) LOG_PRIOR(-244.18339819000468) AVGLOGLIKELIHOOD(-242.58086961760836) AVGLOG_PRIOR(-0.012395725579471276) NumDocs(19699) VOCABULAR_SIZE(21974)
 K(9) LOGLIKELIHOOD(-4765956.969051744) LOG_PRIOR(-260.1458429346249) AVGLOGLIKELIHOOD(-241.9390308671376) AVGLOG_PRIOR(-0.013206043095315747) NumDocs(19699) VOCABULAR_SIZE(21974)
 K(10) LOGLIKELIHOOD(-4758092.727191508) LOG_PRIOR(-275.11088412794464) AVGLOGLIKELIHOOD(-241.53981050771654) AVGLOG_PRIOR(-0.013965728419104758) NumDocs(19699) VOCABULAR_SIZE(21974)
+```
+
+#### Run spark job
+
+```bash
+sbt "sparkSubmit --class io.elegans.clustering.CalcLDA -- --hostname <es hostname> --group_by_field <field for grouping> --search_path <index_name/type_name> --min_k <min_topics> --max_k <max_topics> --stopwordFile </path/of/stopword_list.txt> --outputDir </path/of/existing/empty/directory>"
+```
+
+e.g.
+
+```bash
+sbt "sparkSubmit --class io.elegans.clustering.CalcLDA -- --hostname elastic-0.getjenny.com --group_by_field conversation --search_path english/question --min_k 10 --max_k 30 --stopwordFile /tmp/english_stopwords.txt --outputDir /tmp/lda_results"
+```
+
+### io.elegans.clustering.KMeansW2VClustering
+
+```bash
+calculate clusters with data from an elasticsearch index using w2v representation of phrases.
+Usage: Clustering with ES data [options]
+
+  --hostname <value>       the hostname of the elasticsearch instance  default: localhost
+  --port <value>           the port of the elasticsearch instance  default: 9200
+  --group_by_field <value>
+                           group the search results by field e.g. conversation, None => no grouping  default: None
+  --search_path <value>    the search path on elasticsearch e.g. <index name>/<type name>  default: jenny-en-0/question
+  --query <value>          a json string with the query  default: { "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }
+  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
+  --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
+  --k <value>              number of topics. default: 10
+  --maxIterations <value>  number of iterations of learning. default: 10
+  --inputW2VModel <value>  the input word2vec model
+Fri Nov  4 14:42:09 UTC 2016
+```
+
+### io.elegans.clustering.TrainW2V
+
+```bash
+Train a W2V model taking input data from ES.
+Usage: Train a W2V model [options]
+
+  --hostname <value>       the hostname of the elasticsearch instance  default: localhost
+  --port <value>           the port of the elasticsearch instance  default: 9200
+  --group_by_field <value>
+                           group the search results by field e.g. conversation, None => no grouping  default: None
+  --search_path <value>    the search path on elasticsearch e.g. <index name>/<type name>  default: jenny-en-0/question
+  --query <value>          a json string with the query  default: { "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }
+  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
+  --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
+  --vector_size <value>    the vector size  default: 300
+  --word_window_size <value>
+                           the word window size  default: 5
+  --learningRate <value>   the learningRate  default: 0.025
+Fri Nov  4 14:43:05 UTC 2016
+```
+
+### io.elegans.clustering.W2VModelToSparkFormat
+
+```bash
+Load word2vec model in textual format separated by spaces (<term> <v0> .. <vn>) and save it in spark format.
+Usage: W2VModelToSparkFormat [options]
+
+  --inputfile <value>  the file with the model
+  --outputdir <value>  the port of the elasticsearch instance
+Fri Nov  4 14:44:14 UTC 2016
 ```
