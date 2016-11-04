@@ -1,4 +1,4 @@
-package io.elegans.calc_es_lda
+package io.elegans.clustering
 
 import org.apache.spark.mllib.clustering.{LDA, DistributedLDAModel, OnlineLDAOptimizer, EMLDAOptimizer}
 import org.apache.spark.mllib.linalg.Vectors
@@ -10,11 +10,9 @@ import org.elasticsearch.spark._
 import org.apache.spark.sql.SQLContext
 import org.elasticsearch.spark.sql._
 
-import scala.collection.mutable.Buffer
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.MutableList
-import scala.collection.mutable.LinkedHashMap
 
 import scopt.OptionParser
 
@@ -40,7 +38,7 @@ object EsSparkApp {
     str.forall(c => Character.isLetter(c))
   }
 
-  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP): Seq[String] = {
+  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP): List[String] = {
     val doc: Annotation = new Annotation(text)
     pipeline.annotate(doc)
     val lemmas = new ArrayBuffer[String]()
@@ -48,12 +46,12 @@ object EsSparkApp {
     for (sentence <- sentences;
          token <- sentence.get(classOf[TokensAnnotation])) {
       val lemma = token.getString(classOf[LemmaAnnotation])
-  	  val lc_lemma = lemma.toLowerCase
+      val lc_lemma = lemma.toLowerCase
       if (lc_lemma.length > 2 && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
         lemmas += lc_lemma.toLowerCase
       }
     }
-	lemmas
+    lemmas.toList
   }
 
   private case class Params(
@@ -68,7 +66,8 @@ object EsSparkApp {
     maxIterations: Int = 100,
     outputDir: String = "/tmp",
     stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
-    maxTermsPerTopic: Int = 10)
+    maxTermsPerTopic: Int = 10,
+    max_topics_per_doc: Int = 10)
 
   private def doLDA(params: Params) {
     val conf = new SparkConf().setAppName("LDA from ES data")
@@ -108,10 +107,11 @@ object EsSparkApp {
           )
           try {
             val pipeline = createNLPPipeline()
-            val doc_lemmas = (s._1, plainTextToLemmas(conversation, stopWords, pipeline))
+            val doc_lemmas : Tuple2[String, List[String]] =
+              (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline))
             doc_lemmas
           } catch {
-            case e: Exception => (None, List[String]())
+            case e: Exception => Tuple2(None, List.empty[String])
           }
         })
         tmpDocTerms
@@ -120,28 +120,29 @@ object EsSparkApp {
           try {
             val pipeline = createNLPPipeline()
             val doctext = used_fields.map( v => {
-                s._2.getOrElse(v, "")
-              } ).mkString(" ")
-            val doc_lemmas = (s._1, plainTextToLemmas(doctext, stopWords, pipeline))
+              s._2.getOrElse(v, "")
+            } ).mkString(" ")
+            val doc_lemmas : Tuple2[String, List[String]] =
+              (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline))
             doc_lemmas
           } catch {
-            case e: Exception => (None, List[String]())
+            case e: Exception => Tuple2(None, List.empty[String])
           }
         })
         tmpDocTerms
     }
 
-    /* docTermFreqs: mapping <doc_id> -> (doc_id_str, Map(term, freq)) ; term frequencies for each doc */
+    /* docTermFreqs: mapping <doc_id> -> (doc_id_str, Map(term, count)) ; term counts for each doc */
     val docTermFreqs = docTerms.filter(_._1 != None).zipWithIndex.map {
-      case ((conv_id_str, terms), conv_id) => {
-        /* termFreqs: mapping term -> freq ; frequency for each term in a doc */
+      case ((doc_id_str, terms), doc_id) => {
+        /* termFreqs: mapping term -> freq ; count for each term in a doc */
         val termFreqs = terms.foldLeft(new HashMap[String, Int]()) {
           (term_freq_map, term) => {
             term_freq_map += term -> (term_freq_map.getOrElse(term, 0) + 1)
             term_freq_map
           }
         }
-        val doc_data = (conv_id, (conv_id_str, termFreqs))
+        val doc_data = (doc_id, (doc_id_str, termFreqs))
         doc_data
       }
     }
@@ -160,7 +161,7 @@ object EsSparkApp {
     sc.broadcast(terms_id_map)
     sc.broadcast(terms_id_list)
 
-    /* entries: mapping doc_id -> List(<term_index, term_frequency_in_doc>)*/
+    /* entries: mapping doc_id -> List(<term_index, term_occurrence_in_doc>)*/
     val entries = docTermFreqs.map(doc => {
       (doc._1, terms_id_list.map({term =>
         (term._2, doc._2._2.getOrElse(term._1, 0))
@@ -168,18 +169,16 @@ object EsSparkApp {
     })
 
     val num_of_terms : Int = terms_id_map.size
-    val num_of_docs : Long = doc_id_map.size
+    val num_of_docs : Long = docTermFreqs.count()
     val corpus = entries.map ( { entry =>
       val seq : Seq[(Int, Double)] = entry._2.map(v => {
         val term_index = v._1.asInstanceOf[Int]
-        val term_occourrence = v._2.asInstanceOf[Double]
-        (term_index, term_occourrence)
+        val term_occurrence = v._2.asInstanceOf[Double]
+        (term_index, term_occurrence)
       }).filter(_._2 != 0.0)
       val vector = Vectors.sparse(num_of_terms, seq)
       (entry._1, vector)
     } )
-
-    corpus.persist(StorageLevel.MEMORY_AND_DISK)
 
     /* COMPUTE LDA */
     val max_k : Int = params.max_k
@@ -237,7 +236,8 @@ object EsSparkApp {
           val doc_topic_weights: List[Double] = d._3.toList
           val doc_id = doc_id_map(d._1)._1
           val topics_weights: List[(Int, Double)] = doc_topic_ids.zip(doc_topic_weights)
-          val list_of_topics_per_doc = topics_weights
+          val topics_weights_filtered : List[(Int, Double)] = topics_weights
+          val list_of_topics_per_doc = topics_weights_filtered.take(params.max_topics_per_doc)
             .map(t => (k, doc_id, t._1, t._2)) /* num_of_topics, doc_id, topic_id, weight */
           list_of_topics_per_doc
       }).flatMap(list => list)
@@ -296,6 +296,10 @@ object EsSparkApp {
         .text(s"the where to store the output files: topics and document per topics" +
           s"  default: ${defaultParams.outputDir}")
         .action((x, c) => c.copy(outputDir = x))
+      opt[Int]("max_topics_per_doc")
+        .text(s"write the first n topic classifications per document" +
+          s"  default: ${defaultParams.max_topics_per_doc}")
+        .action((x, c) => c.copy(max_topics_per_doc = x))
     }
 
     parser.parse(args, defaultParams) match {

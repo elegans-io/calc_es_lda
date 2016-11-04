@@ -2,6 +2,8 @@
 
 ## Build
 
+Note: works with java 7 and 8 (not with jdk 9)
+
 sbt package
 
 ## Execute
@@ -24,18 +26,20 @@ Usage: LDA with ES data [options]
   --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
   --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
+  --max_topics_per_doc <value>
+                           write the first n topic classifications per document  default: 10
 ```
 
 ## Run with spark
 
 ```bash
-sbt "sparkSubmit --class io.elegans.calc_es_lda.EsSparkApp -- --hostname <es hostname> --group_by_field <field for grouping> --search_path <index_name/type_name> --min_k <min_topics> --max_k <max_topics> --stopwordFile </path/of/stopword_list.txt> --outputDir </path/of/existing/empty/directory>"
+sbt "sparkSubmit --class io.elegans.clustering.EsSparkApp -- --hostname <es hostname> --group_by_field <field for grouping> --search_path <index_name/type_name> --min_k <min_topics> --max_k <max_topics> --stopwordFile </path/of/stopword_list.txt> --outputDir </path/of/existing/empty/directory>"
 ```
 
 e.g.
 
 ```bash
-sbt "sparkSubmit --class io.elegans.calc_es_lda.EsSparkApp -- --hostname elastic-0.getjenny.com --group_by_field conversation --search_path english/question --min_k 10 --max_k 30 --stopwordFile /tmp/english_stopwords.txt --outputDir /tmp/lda_results"
+sbt "sparkSubmit --class io.elegans.clustering.EsSparkApp -- --hostname elastic-0.getjenny.com --group_by_field conversation --search_path english/question --min_k 10 --max_k 30 --stopwordFile /tmp/english_stopwords.txt --outputDir /tmp/lda_results"
 ```
 
 ## Output

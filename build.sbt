@@ -1,6 +1,6 @@
 import NativePackagerHelper._
 
-name := "calc_es_lda"
+name := "clustering"
 
 version := "0.1"
 
@@ -20,13 +20,15 @@ libraryDependencies ++= Seq(
 	"com.github.scopt" %% "scopt" % "3.5.0"
 )
 
+
+
 SparkSubmit.settings
 
 enablePlugins(JavaServerAppPackaging)
 
 // Assembly settings
-mainClass in Compile := Some("io.elegans.calc_es_lda.EsSparkApp")
-mainClass in assembly := Some("io.elegans.calc_es_lda.EsSparkApp")
+mainClass in Compile := Some("io.elegans.clustering.EsSparkApp")
+mainClass in assembly := Some("io.elegans.clustering.EsSparkApp")
 
 mappings in Universal ++= {
   // copy configuration files to config directory
