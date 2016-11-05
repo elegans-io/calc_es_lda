@@ -137,8 +137,10 @@ object KMeansW2VClustering {
         }
       })
 
-      val v_sum = v.reduce((x,y) => Tuple2(x, y).zipped.map(_ + _))
-      (e._1.toString, Vectors.dense(v_sum))
+      val v_phrase_sum = v.reduce((x,y) => Tuple2(x, y).zipped.map(_ + _))
+      val normal : Array[Double] = Array.fill[Double](v_size)(v_size)
+      val v_phrase = List(v_phrase_sum, normal).reduce((x,y) => Tuple2(x, y).zipped.map(_ / _))
+      (e._1.toString, Vectors.dense(v_phrase))
     })
 
   val numClusters = params.k
