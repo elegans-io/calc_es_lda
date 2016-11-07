@@ -88,7 +88,6 @@ Usage: Clustering with ES data [options]
   --k <value>              number of topics. default: 10
   --maxIterations <value>  number of iterations of learning. default: 10
   --inputW2VModel <value>  the input word2vec model
-Fri Nov  4 14:42:09 UTC 2016
 ```
 
 ### io.elegans.clustering.TrainW2V
@@ -110,7 +109,6 @@ Usage: Train a W2V model [options]
   --word_window_size <value>
                            the word window size  default: 5
   --learningRate <value>   the learningRate  default: 0.025
-Fri Nov  4 14:43:05 UTC 2016
 ```
 
 ### io.elegans.clustering.W2VModelToSparkFormat
@@ -121,5 +119,22 @@ Usage: W2VModelToSparkFormat [options]
 
   --inputfile <value>  the file with the model
   --outputdir <value>  the port of the elasticsearch instance
-Fri Nov  4 14:44:14 UTC 2016
+```
+
+### io.elegans.clustering.ReduceW2VModel
+
+```bash
+Generate a reduced W2V model by selecting only the vectors of the words used in the dataset
+Usage: ReduceW2VModel [options]
+
+  --hostname <value>       the hostname of the elasticsearch instance  default: localhost
+  --port <value>           the port of the elasticsearch instance  default: 9200
+  --group_by_field <value>
+                           group the search results by field e.g. conversation, None => no grouping  default: None
+  --search_path <value>    the search path on elasticsearch e.g. <index name>/<type name>  default: jenny-en-0/question
+  --query <value>          a json string with the query  default: { "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }
+  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
+  --inputfile <value>      the file with the model
+  --outputfile <value>     the output file  default: /tmp/w2v_model.txt
 ```

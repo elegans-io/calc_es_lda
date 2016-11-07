@@ -1,10 +1,12 @@
 package io.elegans.clustering
 
 import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
+import org.apache.spark.rdd.RDD
 
 import scala.util.Try
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
+import org.apache.spark.storage.StorageLevel
 import scopt.OptionParser
 
 object W2VModelToSparkFormat {
@@ -16,14 +18,11 @@ object W2VModelToSparkFormat {
 
   private def convertModelToSparkW2V(inputfile: String, outputdir: String) {
     val conf = new SparkConf().setAppName("LDA from ES data with W2V")
+      .set("spark.driver.maxResultSize", "16g")
+
     val sc = new SparkContext(conf)
 
-    val fileName = Option(inputfile)
-    val w2vfile = fileName match {
-      case Some(trainedModelFN) =>
-        scala.io.Source.fromFile(name=trainedModelFN, enc="UTF-8").getLines().map(_.trim)
-      case None => List.empty
-    }
+    val w2vfile = sc.textFile(inputfile).map(_.trim)
 
     val model = w2vfile.map( line => {
       val items : Array[String] = line.split(" ")
@@ -32,7 +31,8 @@ object W2VModelToSparkFormat {
       (key, values)
     })
 
-    val w2vModel = new Word2VecModel(model.toMap)
+    model.persist(StorageLevel.MEMORY_AND_DISK)
+    val w2vModel = new Word2VecModel(model.collectAsMap().toMap)
 
     w2vModel.save(sc, outputdir)
   }
