@@ -76,6 +76,7 @@ sbt "sparkSubmit --class io.elegans.clustering.CalcLDA -- --hostname elastic-0.g
 calculate clusters with data from an elasticsearch index using w2v representation of phrases.
 Usage: Clustering with ES data [options]
 
+  --help                   prints this usage text
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
@@ -89,6 +90,7 @@ Usage: Clustering with ES data [options]
   --max_k <value>          max number of topics. default: 10
   --maxIterations <value>  number of iterations of learning. default: 10
   --inputW2VModel <value>  the input word2vec model
+  --avg                    this flag enable the vector averages
 ```
 
 ### io.elegans.clustering.TrainW2V
@@ -97,6 +99,7 @@ Usage: Clustering with ES data [options]
 Train a W2V model taking input data from ES.
 Usage: Train a W2V model [options]
 
+  --help                   prints this usage text
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
@@ -118,6 +121,7 @@ Usage: Train a W2V model [options]
 Load word2vec model in textual format separated by spaces (<term> <v0> .. <vn>) and save it in spark format.
 Usage: W2VModelToSparkFormat [options]
 
+  --help               prints this usage text
   --inputfile <value>  the file with the model
   --outputdir <value>  the port of the elasticsearch instance
 ```
@@ -125,9 +129,10 @@ Usage: W2VModelToSparkFormat [options]
 ### io.elegans.clustering.ReduceW2VModel
 
 ```bash
-Generate a reduced W2V model by selecting only the vectors of the words used in the dataset
-Usage: ReduceW2VModel [options]
+Train a W2V model taking input data from ES.
+Usage: Generate a reduced W2V model by selecting only the vectors of the words used in the dataset [options]
 
+  --help                   prints this usage text
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
