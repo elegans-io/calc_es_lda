@@ -90,7 +90,7 @@ Usage: Clustering with ES data [options]
   --max_k <value>          max number of topics. default: 10
   --maxIterations <value>  number of iterations of learning. default: 10
   --inputW2VModel <value>  the input word2vec model
-  --avg                    this flag enable the vector averages
+  --avg                    this flag disable the vectors
 ```
 
 ### io.elegans.clustering.TrainW2V
