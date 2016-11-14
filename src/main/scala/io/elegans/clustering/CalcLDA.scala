@@ -93,9 +93,9 @@ object CalcLDA {
       case Some(group_by_field) =>
         val tmpDocTerms = search_res.map(s => {
           val key = s._2.getOrElse(group_by_field, "")
-          (key, s._2)
+          (key, List(s._2))
         }
-        ).groupByKey().map( s => {
+        ).reduceByKey(_ ++ _).map( s => {
           val conversation : String = s._2.foldRight("")((a, b) =>
             try {
               val c = used_fields.map( v => { a.getOrElse(v, None) } )

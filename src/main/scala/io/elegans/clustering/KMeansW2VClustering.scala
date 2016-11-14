@@ -1,15 +1,18 @@
 package io.elegans.clustering
 
 import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors, Matrix}
-import org.apache.spark.mllib.linalg.distributed.{MatrixEntry, RowMatrix, IndexedRowMatrix}
+import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Matrix, Vector, Vectors}
+import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
+import org.apache.spark.mllib.feature.{HashingTF, IDF}
+import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.linalg.distributed.{IndexedRowMatrix, MatrixEntry, RowMatrix}
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import org.elasticsearch.spark._
-import scala.collection.mutable.ArrayBuffer
-import scopt.OptionParser
-import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
 
+import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scopt.OptionParser
+import org.apache.spark.rdd.RDD
 import org.apache.spark._
 import org.apache.spark.streaming._
 
@@ -60,7 +63,9 @@ object KMeansW2VClustering {
     stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
     inputW2VModel: String = "",
     maxIterations: Int = 10,
-    k: Int = 10
+    max_k: Int = 10,
+    min_k: Int = 8,
+    avg: Boolean = false
   )
 
   private def doClustering(params: Params) {
@@ -88,9 +93,9 @@ object KMeansW2VClustering {
       case Some(group_by_field) =>
         val tmpDocTerms = search_res.map(s => {
           val key = s._2.getOrElse(group_by_field, "")
-          (key, s._2)
+          (key, List(s._2))
         }
-        ).groupByKey().map( s => {
+        ).reduceByKey(_ ++ _).map( s => {
           val conversation : String = s._2.foldRight("")((a, b) =>
             try {
               val c = used_fields.map( v => { a.getOrElse(v, None) } )
@@ -127,37 +132,73 @@ object KMeansW2VClustering {
         tmpDocTerms
     }
 
+    val documents = docTerms.filter(_._1 != "").filter(_._2 != List.empty[String]) //.filter(_._2 != List("none"))
+
+    val hashingTF = new HashingTF()
+    val tf: RDD[Vector] = hashingTF.transform(documents.values)
+    tf.cache()
+
+    val idf_filtered = new IDF(minDocFreq = 2).fit(tf) // compute the inverse document frequency
+    val tfidf: RDD[Vector] = idf_filtered.transform(tf) // transforms term frequency (TF) vectors to TF-IDF vectors
+
+    val documents_idf = documents.zip(tfidf)
+
     val w2vModel = Word2VecModel.load(sc, params.inputW2VModel)
 
     val v_size = w2vModel.getVectors.head._2.length
 
+    //documents_idf.foreach(x => { println("TFIDF_E: " + x._2) } )
+
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
-    val docVectors = docTerms.filter(_._1 != None).filter(_._2 != List.empty[String]).map( e => {
-      val v =  e._2.map(l => {
+    val docVectors = documents_idf.map(e => {
+      val term_tfidf_weight = e._2
+      val v = e._1._2.map(lemma => {
         try {
-          w2vModel.transform(l).toDense.toArray
+          val vector = w2vModel.transform(lemma).toDense.toArray //transform word to vector
+          val lemma_hash_id = hashingTF.transform(Seq(lemma))
+          val max_index = lemma_hash_id.argmax
+          assert(term_tfidf_weight(max_index) != 0)
+          val term_weight = term_tfidf_weight(max_index)
+          val weighted_vector = vector.map(item => {item * term_weight}).toVector.toArray
+          weighted_vector
         } catch {
           case e: Exception => Vectors.zeros(v_size).toDense.toArray
         }
-      })
+      }).filter(_ != Vectors.zeros(v_size).toDense.toArray)
 
       val v_phrase_sum = v.reduce((x,y) => Tuple2(x, y).zipped.map(_ + _))
-      val normal : Array[Double] = Array.fill[Double](v_size)(v_size)
-      val v_phrase = List(v_phrase_sum, normal).reduce((x,y) => Tuple2(x, y).zipped.map(_ / _))
-      (e._1.toString, Vectors.dense(v_phrase))
+//      val normal : Array[Double] = Array.fill[Double](v_size)(v_size)
+//      val v_phrase = List(v_phrase_sum, normal).reduce((x,y) => Tuple2(x, y).zipped.map(_ / _))
+//      ((e._1._1.toString, e._1.toString, e._2.toSparse.toString(), v_phrase_sum.toVector), Vectors.dense(v_phrase_sum))
+      (e._1._1.toString, Vectors.dense(v_phrase_sum))
     })
 
-  val numClusters = params.k
   val numIterations = params.maxIterations
   val indata = docVectors.map(_._2)
-  val clusters = KMeans.train(indata, numClusters, numIterations)
+  indata.cache()
 
-  val predictions = docVectors.map(x => {(x._1, clusters.predict(x._2))})
+  val max_k : Int = params.max_k
+  val min_k : Int = params.min_k
+  var k : Int = min_k
+  var iterate : Boolean = true
+  do {
+    val clusters = KMeans.train(indata, k, numIterations)
 
-  val WSSSE = clusters.computeCost(indata)
-  println("Within Set Sum of Squared Errors K(" +  numClusters + ") (WSSSE) = " + WSSSE)
+    val predictions = docVectors.map(x => {
+      (x._1, clusters.predict(x._2))
+    })
 
-  predictions.saveAsTextFile(params.outputDir)
+    val WSSSE = clusters.computeCost(indata)
+    println("Within Set Sum of Squared Errors K(" + k + ") (WSSSE) = " + WSSSE)
+
+    val outTopicPerDocumentDirname = "KMEANS_W2V_TOPICSxDOC_K." + k
+    val outTopicPerDocumentFilePath = params.outputDir + "/" + outTopicPerDocumentDirname
+
+    predictions.saveAsTextFile(outTopicPerDocumentFilePath)
+    k += 1
+    iterate = if (k < max_k) true else false
+  } while (iterate)
+
   }
 
   def main(args: Array[String]) {
@@ -196,15 +237,20 @@ object KMeansW2VClustering {
         .text(s"the where to store the output files: topics and document per topics" +
           s"  default: ${defaultParams.outputDir}")
         .action((x, c) => c.copy(outputDir = x))
-      opt[Int]("k")
-        .text(s"number of topics. default: ${defaultParams.k}")
-        .action((x, c) => c.copy(k = x))
+      opt[Int]("min_k")
+        .text(s"min number of topics. default: ${defaultParams.min_k}")
+        .action((x, c) => c.copy(min_k = x))
+      opt[Int]("max_k")
+        .text(s"max number of topics. default: ${defaultParams.max_k}")
+        .action((x, c) => c.copy(max_k = x))
       opt[Int]("maxIterations")
         .text(s"number of iterations of learning. default: ${defaultParams.maxIterations}")
         .action((x, c) => c.copy(maxIterations = x))
       opt[String]("inputW2VModel")
         .text(s"the input word2vec model")
         .action((x, c) => c.copy(inputW2VModel = x))
+      opt[Boolean]("avg").text("average vectors")
+        .action( (x, c) => c.copy(avg = x))
     }
 
     parser.parse(args, defaultParams) match {

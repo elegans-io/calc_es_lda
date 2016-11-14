@@ -85,7 +85,8 @@ Usage: Clustering with ES data [options]
   --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
   --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
-  --k <value>              number of topics. default: 10
+  --min_k <value>          min number of topics. default: 8
+  --max_k <value>          max number of topics. default: 10
   --maxIterations <value>  number of iterations of learning. default: 10
   --inputW2VModel <value>  the input word2vec model
 ```
