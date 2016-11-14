@@ -157,7 +157,6 @@ object KMeansW2VClustering {
           val vector = w2vModel.transform(lemma).toDense.toArray //transform word to vector
           val lemma_hash_id = hashingTF.transform(Seq(lemma))
           val max_index = lemma_hash_id.argmax
-          assert(term_tfidf_weight(max_index) != 0)
           val term_weight = term_tfidf_weight(max_index)
           val weighted_vector = vector.map(item => {item * term_weight}).toVector.toArray
           weighted_vector
@@ -167,10 +166,11 @@ object KMeansW2VClustering {
       }).filter(_ != Vectors.zeros(v_size).toDense.toArray)
 
       val v_phrase_sum = v.reduce((x,y) => Tuple2(x, y).zipped.map(_ + _))
-      if(params.avg) {
+      if (params.avg) {
         val normal : Array[Double] = Array.fill[Double](v_size)(v_size)
         val v_phrase = List(v_phrase_sum, normal).reduce((x,y) => Tuple2(x, y).zipped.map(_ / _))
-        ((e._1._1.toString, e._1.toString, e._2.toSparse.toString(), v_phrase_sum.toVector), Vectors.dense(v_phrase_sum))
+        //((e._1._1.toString, e._1.toString, e._2.toSparse.toString(), v_phrase_sum.toVector), Vectors.dense(v_phrase_sum))
+        (e._1._1.toString, Vectors.dense(v_phrase))
       } else {
         (e._1._1.toString, Vectors.dense(v_phrase_sum))
       }
