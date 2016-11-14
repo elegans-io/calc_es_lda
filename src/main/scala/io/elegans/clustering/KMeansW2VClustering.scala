@@ -205,6 +205,7 @@ object KMeansW2VClustering {
     val defaultParams = Params()
     val parser = new OptionParser[Params]("Clustering with ES data") {
       head("calculate clusters with data from an elasticsearch index using w2v representation of phrases.")
+      help("help").text("prints this usage text")
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")
@@ -249,8 +250,8 @@ object KMeansW2VClustering {
       opt[String]("inputW2VModel")
         .text(s"the input word2vec model")
         .action((x, c) => c.copy(inputW2VModel = x))
-      opt[Boolean]("avg").text("average vectors")
-        .action( (x, c) => c.copy(avg = x))
+      opt[Unit]("avg").text("this flag enable the vector averages")
+        .action( (x, c) => c.copy(avg = true))
     }
 
     parser.parse(args, defaultParams) match {

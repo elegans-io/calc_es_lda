@@ -138,6 +138,7 @@ object TrainW2V {
     val defaultParams = Params()
     val parser = new OptionParser[Params]("Train a W2V model") {
       head("Train a W2V model taking input data from ES.")
+      help("help").text("prints this usage text")
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")

@@ -41,6 +41,7 @@ object W2VModelToSparkFormat {
     val defaultParams = Params()
     val parser = new OptionParser[Params]("W2VModelToSparkFormat") {
       head("Load word2vec model in textual format separated by spaces (<term> <v0> .. <vn>) and save it in spark format.")
+      help("help").text("prints this usage text")
       opt[String]("inputfile")
         .text(s"the file with the model")
         .action((x, c) => c.copy(inputfile = x))

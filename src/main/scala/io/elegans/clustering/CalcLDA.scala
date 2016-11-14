@@ -252,6 +252,7 @@ object CalcLDA {
     val defaultParams = Params()
     val parser = new OptionParser[Params]("LDA with ES data") {
       head("calculate LDA with data from an elasticsearch index.")
+      help("help").text("prints this usage text")
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")
