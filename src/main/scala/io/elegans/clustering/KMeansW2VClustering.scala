@@ -65,7 +65,7 @@ object KMeansW2VClustering {
     maxIterations: Int = 10,
     max_k: Int = 10,
     min_k: Int = 8,
-    avg: Boolean = false
+    avg: Boolean = true
   )
 
   private def doClustering(params: Params) {
@@ -253,8 +253,8 @@ object KMeansW2VClustering {
       opt[String]("inputW2VModel")
         .text(s"the input word2vec model")
         .action((x, c) => c.copy(inputW2VModel = x))
-      opt[Unit]("avg").text("this flag enable the vector averages")
-        .action( (x, c) => c.copy(avg = true))
+      opt[Unit]("avg").text("this flag disable the vectors")
+        .action( (x, c) => c.copy(avg = false))
     }
 
     parser.parse(args, defaultParams) match {
