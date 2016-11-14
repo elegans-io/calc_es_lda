@@ -23,7 +23,10 @@ import edu.stanford.nlp.ling.CoreAnnotations._
 import java.util.Properties
 import scala.collection.JavaConversions._
 
-object KMeansW2VClustering {
+/**
+  * Created by angelo on 14/11/16.
+  */
+object GetW2VSimilarSentences {
 
   def createNLPPipeline(): StanfordCoreNLP = {
     val props = new Properties()
@@ -52,22 +55,29 @@ object KMeansW2VClustering {
     lemmas.toList
   }
 
+  def cosineSimilarity(a: Vector, b: Vector) : Double = {
+    val values = a.toDense.toArray.zip(b.toDense.toArray).map(x => {
+      (x._1 * x._2, scala.math.pow(x._1, 2), scala.math.pow(x._2, 2))
+      }).reduce((a,b) => (a._1 + b._1, a._2 + b._2, a._3 + b._3))
+    val cs = values._1 / (scala.math.sqrt(values._2) * scala.math.sqrt(values._3))
+    cs
+  }
+
   private case class Params(
-    hostname: String = "localhost",
-    port: String = "9200",
-    search_path: String = "jenny-en-0/question",
-    query: String = """{ "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }""",
-    used_fields: Seq[String] = Seq[String]("question", "answer"),
-    group_by_field: Option[String] = None,
-    outputDir: String = "/tmp",
-    stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
-    inputW2VModel: String = "",
-    maxIterations: Int = 10,
-    max_k: Int = 10,
-    min_k: Int = 8,
-    avg: Boolean = true,
-    tfidf: Boolean = false
-  )
+                             hostname: String = "localhost",
+                             port: String = "9200",
+                             search_path: String = "jenny-en-0/question",
+                             query: String = """{ "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }""",
+                             used_fields: Seq[String] = Seq[String]("question", "answer"),
+                             group_by_field: Option[String] = None,
+                             outputDir: String = "/tmp",
+                             stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
+                             inputW2VModel: String = "",
+                             avg: Boolean = true,
+                             tfidf : Boolean = false,
+                             input_sentences : String = "",
+                             similarity_threshold : Double = 0.0
+                           )
 
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering")
@@ -87,6 +97,8 @@ object KMeansW2VClustering {
         .getLines().map(_.trim).toSet).value
       case None => Set.empty
     }
+
+    val querySentences = sc.textFile(params.input_sentences).map(_.trim)
 
     /* docTerms: map of (docid, list_of_lemmas) */
     val used_fields = params.used_fields
@@ -133,21 +145,30 @@ object KMeansW2VClustering {
         tmpDocTerms
     }
 
-    val documents = docTerms.filter(_._1 != "").filter(_._2 != List.empty[String]) //.filter(_._2 != List("none"))
-
+    val documents = docTerms.filter(_._1 != "").filter(_._2 != List.empty[String]).map(x => (x._1.toString, x._2))
     val w2vModel = Word2VecModel.load(sc, params.inputW2VModel)
+    val query_id_prefix : String = "io.elegans.clustering.query_sentence_tmp_"
     val v_size = w2vModel.getVectors.head._2.length
+
+    val enumeratedQueryItems = querySentences.zipWithIndex.map(x => {
+      val pipeline = createNLPPipeline()
+      (query_id_prefix + x._2,
+        plainTextToLemmas(x._1, stopWords, pipeline)
+        )
+    })
+
+    val merged_collection = enumeratedQueryItems.union(documents)
 
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
     val docVectors = if(params.tfidf) {
       val hashingTF = new HashingTF()
-      val tf: RDD[Vector] = hashingTF.transform(documents.values)
+      val tf: RDD[Vector] = hashingTF.transform(merged_collection.values)
       tf.cache()
 
       val idf_filtered = new IDF(minDocFreq = 2).fit(tf) // compute the inverse document frequency
       val tfidf: RDD[Vector] = idf_filtered.transform(tf) // transforms term frequency (TF) vectors to TF-IDF vectors
 
-      val documents_idf = documents.zip(tfidf)
+      val documents_idf = merged_collection.zip(tfidf)
 
       val sentenceVectors = documents_idf.map(e => {
         val term_tfidf_weight = e._2
@@ -177,7 +198,7 @@ object KMeansW2VClustering {
       })
       sentenceVectors
     } else {
-      val sentenceVectors = documents.map(e => {
+      val sentenceVectors = merged_collection.map(e => {
         val v = e._2.map(lemma => {
           try {
             val vector = w2vModel.transform(lemma).toDense.toArray //transform word to vector
@@ -199,38 +220,23 @@ object KMeansW2VClustering {
       sentenceVectors
     }
 
-  val numIterations = params.maxIterations
-  val indata = docVectors.map(_._2)
-  indata.cache()
+    val numOfQuery : Long = enumeratedQueryItems.count()
+    val queryVectors = sc.parallelize(docVectors.take(numOfQuery.toInt))
 
-  val max_k : Int = params.max_k
-  val min_k : Int = params.min_k
-  var k : Int = min_k
-  var iterate : Boolean = true
-  do {
-    val clusters = KMeans.train(indata, k, numIterations)
+    val similarity_values = queryVectors.cartesian(docVectors).map(x => {
+      val cs = cosineSimilarity(x._1._2, x._2._2)
+      (x._1._1, x._2._1, cs)
+    }).filter(_._3 >= params.similarity_threshold)
 
-    val predictions = docVectors.map(x => {
-      (x._1, clusters.predict(x._2))
-    })
-
-    val WSSSE = clusters.computeCost(indata)
-    println("Within Set Sum of Squared Errors K(" + k + ") (WSSSE) = " + WSSSE)
-
-    val outTopicPerDocumentDirname = "KMEANS_W2V_TOPICSxDOC_K." + k
-    val outTopicPerDocumentFilePath = params.outputDir + "/" + outTopicPerDocumentDirname
-
-    predictions.saveAsTextFile(outTopicPerDocumentFilePath)
-    k += 1
-    iterate = if (k < max_k) true else false
-  } while (iterate)
+    val outResultsDirnameFilePath = params.outputDir
+    similarity_values.saveAsTextFile(outResultsDirnameFilePath)
 
   }
 
   def main(args: Array[String]) {
     val defaultParams = Params()
-    val parser = new OptionParser[Params]("Clustering with ES data") {
-      head("calculate clusters with data from an elasticsearch index using w2v representation of phrases.")
+    val parser = new OptionParser[Params]("Search similar sentences") {
+      head("perform a similarity search using cosine vector as distance function")
       help("help").text("prints this usage text")
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
@@ -264,18 +270,15 @@ object KMeansW2VClustering {
         .text(s"the where to store the output files: topics and document per topics" +
           s"  default: ${defaultParams.outputDir}")
         .action((x, c) => c.copy(outputDir = x))
-      opt[Int]("min_k")
-        .text(s"min number of topics. default: ${defaultParams.min_k}")
-        .action((x, c) => c.copy(min_k = x))
-      opt[Int]("max_k")
-        .text(s"max number of topics. default: ${defaultParams.max_k}")
-        .action((x, c) => c.copy(max_k = x))
-      opt[Int]("maxIterations")
-        .text(s"number of iterations of learning. default: ${defaultParams.maxIterations}")
-        .action((x, c) => c.copy(maxIterations = x))
       opt[String]("inputW2VModel")
         .text(s"the input word2vec model")
         .action((x, c) => c.copy(inputW2VModel = x))
+      opt[String]("input_sentences")
+        .text(s"the list of input sentences" + "  default: ${defaultParams.input_sentences}")
+        .action((x, c) => c.copy(input_sentences = x))
+      opt[Double]("similarity_threshold")
+        .text(s"cutoff threshold" + "  default: ${defaultParams.similarity_threshold}")
+        .action((x, c) => c.copy(similarity_threshold = x))
       opt[Unit]("avg").text("this flag disable the vectors")
         .action( (x, c) => c.copy(avg = false))
       opt[Unit]("tfidf").text("this flag enable tfidf term weighting")
@@ -290,3 +293,4 @@ object KMeansW2VClustering {
     }
   }
 }
+

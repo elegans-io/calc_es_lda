@@ -144,3 +144,28 @@ Usage: Generate a reduced W2V model by selecting only the vectors of the words u
   --inputfile <value>      the file with the model
   --outputfile <value>     the output file  default: /tmp/w2v_model.txt
 ```
+
+### io.elegans.clustering.GetW2VSimilarSentences
+
+```bash
+perform a similarity search using cosine vector as distance function
+Usage: Search similar sentences [options]
+
+  --help                   prints this usage text
+  --hostname <value>       the hostname of the elasticsearch instance  default: localhost
+  --port <value>           the port of the elasticsearch instance  default: 9200
+  --group_by_field <value>
+                           group the search results by field e.g. conversation, None => no grouping  default: None
+  --search_path <value>    the search path on elasticsearch e.g. <index name>/<type name>  default: jenny-en-0/question
+  --query <value>          a json string with the query  default: { "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }
+  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
+  --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
+  --inputW2VModel <value>  the input word2vec model
+  --input_sentences <value>
+                           the list of input sentences  default: ${defaultParams.input_sentences}
+  --similarity_threshold <value>
+                           cutoff threshold  default: ${defaultParams.similarity_threshold}
+  --avg                    this flag disable the vectors
+  --tfidf                  this flag enable tfidf term weighting
+```
