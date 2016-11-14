@@ -84,9 +84,9 @@ object ReduceW2VModel {
       case Some(group_by_field) =>
         val tmpDocTerms = search_res.map(s => {
           val key = s._2.getOrElse(group_by_field, "")
-          (key, s._2)
+          (key, List(s._2))
         }
-        ).groupByKey().map( s => {
+        ).reduceByKey(_ ++ _).map( s => {
           val conversation : String = s._2.foldRight("")((a, b) =>
             try {
               val c = used_fields.map( v => { a.getOrElse(v, None) } )
@@ -142,6 +142,7 @@ object ReduceW2VModel {
     val defaultParams = Params()
     val parser = new OptionParser[Params]("Generate a reduced W2V model by selecting only the vectors of the words used in the dataset") {
       head("Train a W2V model taking input data from ES.")
+      help("help").text("prints this usage text")
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")

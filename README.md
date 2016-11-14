@@ -76,6 +76,7 @@ sbt "sparkSubmit --class io.elegans.clustering.CalcLDA -- --hostname elastic-0.g
 calculate clusters with data from an elasticsearch index using w2v representation of phrases.
 Usage: Clustering with ES data [options]
 
+  --help                   prints this usage text
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
@@ -85,9 +86,11 @@ Usage: Clustering with ES data [options]
   --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
   --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
-  --k <value>              number of topics. default: 10
+  --min_k <value>          min number of topics. default: 8
+  --max_k <value>          max number of topics. default: 10
   --maxIterations <value>  number of iterations of learning. default: 10
   --inputW2VModel <value>  the input word2vec model
+  --avg                    this flag enable the vector averages
 ```
 
 ### io.elegans.clustering.TrainW2V
@@ -96,6 +99,7 @@ Usage: Clustering with ES data [options]
 Train a W2V model taking input data from ES.
 Usage: Train a W2V model [options]
 
+  --help                   prints this usage text
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
@@ -117,6 +121,7 @@ Usage: Train a W2V model [options]
 Load word2vec model in textual format separated by spaces (<term> <v0> .. <vn>) and save it in spark format.
 Usage: W2VModelToSparkFormat [options]
 
+  --help               prints this usage text
   --inputfile <value>  the file with the model
   --outputdir <value>  the port of the elasticsearch instance
 ```
@@ -124,9 +129,10 @@ Usage: W2VModelToSparkFormat [options]
 ### io.elegans.clustering.ReduceW2VModel
 
 ```bash
-Generate a reduced W2V model by selecting only the vectors of the words used in the dataset
-Usage: ReduceW2VModel [options]
+Train a W2V model taking input data from ES.
+Usage: Generate a reduced W2V model by selecting only the vectors of the words used in the dataset [options]
 
+  --help                   prints this usage text
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
