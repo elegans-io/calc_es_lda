@@ -167,10 +167,13 @@ object KMeansW2VClustering {
       }).filter(_ != Vectors.zeros(v_size).toDense.toArray)
 
       val v_phrase_sum = v.reduce((x,y) => Tuple2(x, y).zipped.map(_ + _))
-//      val normal : Array[Double] = Array.fill[Double](v_size)(v_size)
-//      val v_phrase = List(v_phrase_sum, normal).reduce((x,y) => Tuple2(x, y).zipped.map(_ / _))
-//      ((e._1._1.toString, e._1.toString, e._2.toSparse.toString(), v_phrase_sum.toVector), Vectors.dense(v_phrase_sum))
-      (e._1._1.toString, Vectors.dense(v_phrase_sum))
+      if(params.avg) {
+        val normal : Array[Double] = Array.fill[Double](v_size)(v_size)
+        val v_phrase = List(v_phrase_sum, normal).reduce((x,y) => Tuple2(x, y).zipped.map(_ / _))
+        ((e._1._1.toString, e._1.toString, e._2.toSparse.toString(), v_phrase_sum.toVector), Vectors.dense(v_phrase_sum))
+      } else {
+        (e._1._1.toString, Vectors.dense(v_phrase_sum))
+      }
     })
 
   val numIterations = params.maxIterations
