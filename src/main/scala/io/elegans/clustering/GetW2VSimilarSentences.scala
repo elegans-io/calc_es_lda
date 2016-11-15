@@ -71,7 +71,7 @@ object GetW2VSimilarSentences {
                              used_fields: Seq[String] = Seq[String]("question", "answer"),
                              group_by_field: Option[String] = None,
                              outputDir: String = "/tmp",
-                             stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
+                             stopwordFile: Option[String] = None,
                              inputW2VModel: String = "",
                              avg: Boolean = false,
                              tfidf : Boolean = false,
@@ -162,7 +162,7 @@ object GetW2VSimilarSentences {
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
     val docVectors = if(params.tfidf) {
       val hashingTF = new HashingTF()
-      val tf: RDD[Vector] = hashingTF.transform(merged_collection.values)
+      val tf: RDD[Vector] = hashingTF.transform(merged_collection.values) // get the value from the (key, value) pair
       tf.cache()
 
       val idf_filtered = new IDF(minDocFreq = 2).fit(tf) // compute the inverse document frequency
