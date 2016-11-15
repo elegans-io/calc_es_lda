@@ -73,7 +73,7 @@ object GetW2VSimilarSentences {
                              outputDir: String = "/tmp",
                              stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
                              inputW2VModel: String = "",
-                             avg: Boolean = true,
+                             avg: Boolean = false,
                              tfidf : Boolean = false,
                              input_sentences : String = "",
                              similarity_threshold : Double = 0.0
@@ -223,10 +223,10 @@ object GetW2VSimilarSentences {
     val numOfQuery : Long = enumeratedQueryItems.count()
     val queryVectors = sc.parallelize(docVectors.take(numOfQuery.toInt))
 
-    val similarity_values = queryVectors.cartesian(docVectors).map(x => {
+    val similarity_values = queryVectors.cartesian(docVectors).filter(x => {x._1._1 != x._2._1}).map(x => {
       val cs = cosineSimilarity(x._1._2, x._2._2)
-      (x._1._1, x._2._1, cs)
-    }).filter(_._3 >= params.similarity_threshold)
+      (cs, x._1._1, x._2._1)
+    }).filter(_._1 >= params.similarity_threshold)
 
     val outResultsDirnameFilePath = params.outputDir
     similarity_values.saveAsTextFile(outResultsDirnameFilePath)
@@ -279,10 +279,10 @@ object GetW2VSimilarSentences {
       opt[Double]("similarity_threshold")
         .text(s"cutoff threshold" + "  default: ${defaultParams.similarity_threshold}")
         .action((x, c) => c.copy(similarity_threshold = x))
-      opt[Unit]("avg").text("this flag disable the vectors")
-        .action( (x, c) => c.copy(avg = false))
+      opt[Unit]("avg").text("this flag enable the vectors")
+        .action( (x, c) => c.copy(avg = true))
       opt[Unit]("tfidf").text("this flag enable tfidf term weighting")
-        .action( (x, c) => c.copy(tfidf = false))
+        .action( (x, c) => c.copy(tfidf = true))
     }
 
     parser.parse(args, defaultParams) match {

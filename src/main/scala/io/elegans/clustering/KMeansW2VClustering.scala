@@ -65,7 +65,7 @@ object KMeansW2VClustering {
     maxIterations: Int = 10,
     max_k: Int = 10,
     min_k: Int = 8,
-    avg: Boolean = true,
+    avg: Boolean = false,
     tfidf: Boolean = false
   )
 
@@ -276,10 +276,10 @@ object KMeansW2VClustering {
       opt[String]("inputW2VModel")
         .text(s"the input word2vec model")
         .action((x, c) => c.copy(inputW2VModel = x))
-      opt[Unit]("avg").text("this flag disable the vectors")
-        .action( (x, c) => c.copy(avg = false))
+      opt[Unit]("avg").text("this flag enable the vectors")
+        .action( (x, c) => c.copy(avg = true))
       opt[Unit]("tfidf").text("this flag enable tfidf term weighting")
-        .action( (x, c) => c.copy(tfidf = false))
+        .action( (x, c) => c.copy(tfidf = true))
     }
 
     parser.parse(args, defaultParams) match {
