@@ -77,6 +77,9 @@ object PowerIterationClustering {
                              avg: Boolean = false,
                              tfidf : Boolean = false,
                              input_sentences : String = "",
+                             max_k: Int = 10,
+                             min_k: Int = 8,
+                             maxIterations: Int = 1000,
                              similarity_threshold : Double = 0.0
                            )
 
@@ -109,10 +112,12 @@ object PowerIterationClustering {
           val key = s._2.getOrElse(group_by_field, "")
           (key, List(s._2))
         }
-        ).reduceByKey(_ ++ _).map( s => {
-          val conversation : String = s._2.foldRight("")((a, b) =>
+        ).reduceByKey(_ ++ _).map(s => {
+          val conversation: String = s._2.foldRight("")((a, b) =>
             try {
-              val c = used_fields.map( v => { a.getOrElse(v, None) } )
+              val c = used_fields.map(v => {
+                a.getOrElse(v, None)
+              })
                 .filter(x => x != None).mkString(" ") + " " + b
               c
             } catch {
@@ -121,7 +126,7 @@ object PowerIterationClustering {
           )
           try {
             val pipeline = createNLPPipeline()
-            val doc_lemmas : Tuple2[String, List[String]] =
+            val doc_lemmas: Tuple2[String, List[String]] =
               (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline))
             doc_lemmas
           } catch {
@@ -133,10 +138,10 @@ object PowerIterationClustering {
         val tmpDocTerms = search_res.map(s => {
           try {
             val pipeline = createNLPPipeline()
-            val doctext = used_fields.map( v => {
+            val doctext = used_fields.map(v => {
               s._2.getOrElse(v, "")
-            } ).mkString(" ")
-            val doc_lemmas : Tuple2[String, List[String]] =
+            }).mkString(" ")
+            val doc_lemmas: Tuple2[String, List[String]] =
               (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline))
             doc_lemmas
           } catch {
@@ -148,20 +153,12 @@ object PowerIterationClustering {
 
     val documents = docTerms.filter(_._1 != "").filter(_._2 != List.empty[String]).map(x => (x._1.toString, x._2))
     val w2vModel = Word2VecModel.load(sc, params.inputW2VModel)
-    val query_id_prefix : String = "io.elegans.clustering.query_sentence_tmp_"
     val v_size = w2vModel.getVectors.head._2.length
 
-    val enumeratedQueryItems = querySentences.zipWithIndex.map(x => {
-      val pipeline = createNLPPipeline()
-      (query_id_prefix + x._2,
-        plainTextToLemmas(x._1, stopWords, pipeline)
-        )
-    })
-
-    val merged_collection = enumeratedQueryItems.union(documents)
+    val merged_collection = documents
 
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
-    val docVectors = if(params.tfidf) {
+    val docVectors = if (params.tfidf) {
       val hashingTF = new HashingTF()
       val tf: RDD[Vector] = hashingTF.transform(merged_collection.values) // values -> get the value from the (key, value) pair
       tf.cache()
@@ -186,7 +183,7 @@ object PowerIterationClustering {
           } catch {
             case e: Exception => Vectors.zeros(v_size).toDense.toArray
           }
-        }).filter(! _.sameElements(Vectors.zeros(v_size).toDense.toArray))
+        }).filter(!_.sameElements(Vectors.zeros(v_size).toDense.toArray))
 
         val v_phrase_sum = v.fold(Vectors.zeros(v_size).toDense.toArray)((x, y) => Tuple2(x, y).zipped.map(_ + _))
         if (params.avg) {
@@ -207,7 +204,7 @@ object PowerIterationClustering {
           } catch {
             case e: Exception => Vectors.zeros(v_size).toDense.toArray
           }
-        }).filter(! _.sameElements(Vectors.zeros(v_size).toDense.toArray))
+        }).filter(!_.sameElements(Vectors.zeros(v_size).toDense.toArray))
 
         val v_phrase_sum = v.fold(Vectors.zeros(v_size).toDense.toArray)((x, y) => Tuple2(x, y).zipped.map(_ + _))
         if (params.avg) {
@@ -221,25 +218,42 @@ object PowerIterationClustering {
       sentenceVectors
     }
 
-    val numOfQuery : Long = enumeratedQueryItems.count()
-    val queryVectors = sc.parallelize(docVectors.take(numOfQuery.toInt))
-
-    val similarity_values = queryVectors.cartesian(docVectors).filter(x => {x._1._1 != x._2._1}).map(x => {
+    val similarity_values = docVectors.cartesian(docVectors).filter(x => {
+      x._1._1 != x._2._1
+    }).map(x => {
       val cs = cosineSimilarity(x._1._2, x._2._2)
       (cs, x._1._1, x._2._1)
     }).filter(_._1 >= params.similarity_threshold)
 
-    val affinityMatrixValues = similarity_values.zipWithIndex.map(x => {(x._2 + 1, x._2 + 2, x._1._1)})
+    val hashingTF = new HashingTF()
+    val affinityMatrixValues = similarity_values.map(x => {
+      val index_a_v = hashingTF.transform(Seq(x._2))
+      val index_b_v = hashingTF.transform(Seq(x._3))
+      val index_a: Long = index_a_v.argmax
+      val index_b: Long = index_b_v.argmax
+      (((x._2, index_a), (x._3, index_b)), (index_a, index_b, x._1))
+    })
 
-    val PIClusteringModel = new PowerIterationClustering()
-      .setK(50)
-      .setMaxIterations(200)
-      .setInitializationMode("degree")
-      .run(affinityMatrixValues)
+    val max_k : Int = params.max_k
+    val min_k : Int = params.min_k
+    var k : Int = min_k
+    var iterate : Boolean = true
+    do {
+      val piClusteringModel = new PowerIterationClustering()
+        .setK(k)
+        .setMaxIterations(params.maxIterations)
+        .setInitializationMode("degree")
+        .run(affinityMatrixValues.values)
 
-//    val outResultsDirnameFilePath = params.outputDir
-//    similarity_values.saveAsTextFile(outResultsDirnameFilePath)
+      val clusters = piClusteringModel.assignments
 
+      val outTopicPerDocumentDirname = "PICLUSTER_W2V_TOPICSxDOC_K." + k
+      val outTopicPerDocumentFilePath = params.outputDir + "/" + outTopicPerDocumentDirname
+
+      clusters.saveAsTextFile(outTopicPerDocumentFilePath)
+      k += 1
+      iterate = if (k < max_k) true else false
+    } while (iterate)
   }
 
   def main(args: Array[String]) {
@@ -285,9 +299,18 @@ object PowerIterationClustering {
       opt[String]("input_sentences")
         .text(s"the list of input sentences" + "  default: ${defaultParams.input_sentences}")
         .action((x, c) => c.copy(input_sentences = x))
+      opt[Int]("min_k")
+        .text(s"min number of topics. default: ${defaultParams.min_k}")
+        .action((x, c) => c.copy(min_k = x))
+      opt[Int]("max_k")
+        .text(s"max number of topics. default: ${defaultParams.max_k}")
+        .action((x, c) => c.copy(max_k = x))
       opt[Double]("similarity_threshold")
         .text(s"cutoff threshold" + "  default: ${defaultParams.similarity_threshold}")
         .action((x, c) => c.copy(similarity_threshold = x))
+      opt[Int]("maxIterations")
+        .text(s"number of iterations of learning. default: ${defaultParams.maxIterations}")
+        .action((x, c) => c.copy(maxIterations = x))
       opt[Unit]("avg").text("this flag enable the vectors")
         .action( (x, c) => c.copy(avg = true))
       opt[Unit]("tfidf").text("this flag enable tfidf term weighting")
