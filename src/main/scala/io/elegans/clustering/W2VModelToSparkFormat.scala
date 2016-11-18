@@ -32,7 +32,8 @@ object W2VModelToSparkFormat {
     })
 
     model.persist(StorageLevel.MEMORY_AND_DISK)
-    val w2vModel = new Word2VecModel(model.collectAsMap().toMap)
+    lazy val words_map = model.collectAsMap().toMap
+    lazy val w2vModel = new Word2VecModel(words_map)
 
     w2vModel.save(sc, outputdir)
   }

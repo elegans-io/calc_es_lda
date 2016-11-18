@@ -57,7 +57,7 @@ object ReduceW2VModel {
     inputfile: String = "",
     group_by_field: Option[String] = None,
     outputfile: String = "/tmp/w2v_model.txt",
-    stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt")
+    stopwordFile: Option[String] = None
   )
 
   private def doReduceW2V(params: Params) {

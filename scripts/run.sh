@@ -4,16 +4,6 @@ SCRIPT_PATH=$(dirname `readlink -s -e $0`)
 SCRIPT_NAME=$(basename `readlink -s -e $0`)
 BUILD_PATH=$(readlink -s -e "$SCRIPT_PATH/../" )
 
-#SPARK_MEM=${SPARK_MEM:-8192m}
-#export SPARK_MEM
-#
-#JAVA_OPTS="$JAVA_OPTS -Xms$SPARK_MEM -Xmx$SPARK_MEM"
-
-#S_MEM=${S_MEM:-8192m}
-#export S_MEM
-#
-#JAVA_OPTS="$JAVA_OPTS -Xms$SPARK_MEM -Xmx$SPARK_MEM"
-
 if [[ $# -lt 1 ]]; then
   echo "${SCRIPT_NAME} <classname> <arguments>"
   echo "e.g. ${SCRIPT_NAME} io.elegans.clustering.CalcLDA --help"

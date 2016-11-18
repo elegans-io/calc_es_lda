@@ -5,12 +5,11 @@ import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Matrix, Vector,
 import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
 import org.apache.spark.mllib.feature.{HashingTF, IDF}
 import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.clustering.PowerIterationClustering
 import org.apache.spark.mllib.linalg.distributed.{IndexedRowMatrix, MatrixEntry, RowMatrix}
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import org.elasticsearch.spark._
-import org.apache.spark.storage.StorageLevel
-import scala.util.Try
 
 import scala.collection.mutable.{ArrayBuffer, HashMap}
 import scopt.OptionParser
@@ -28,7 +27,7 @@ import scala.collection.JavaConversions._
 /**
   * Created by angelo on 14/11/16.
   */
-object GetW2VSimilarSentences {
+object PowerIterationClustering {
 
   def createNLPPipeline(): StanfordCoreNLP = {
     val props = new Properties()
@@ -41,7 +40,7 @@ object GetW2VSimilarSentences {
     str.forall(c => Character.isLetter(c))
   }
 
-  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP, min_token_length: Int = 2): List[String] = {
+  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP): List[String] = {
     val doc: Annotation = new Annotation(text)
     pipeline.annotate(doc)
     val lemmas = new ArrayBuffer[String]()
@@ -50,7 +49,7 @@ object GetW2VSimilarSentences {
          token <- sentence.get(classOf[TokensAnnotation])) {
       val lemma = token.getString(classOf[LemmaAnnotation])
       val lc_lemma = lemma.toLowerCase
-      if (lc_lemma.length > min_token_length && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
+      if (lc_lemma.length > 2 && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
         lemmas += lc_lemma.toLowerCase
       }
     }
@@ -82,7 +81,7 @@ object GetW2VSimilarSentences {
                            )
 
   private def doClustering(params: Params) {
-    val conf = new SparkConf().setAppName("W2V clustering").set("spark.driver.maxResultSize", "16g")
+    val conf = new SparkConf().setAppName("W2V clustering")
     conf.set("es.nodes.wan.only", "true")
     conf.set("es.nodes", params.hostname)
     conf.set("es.port", params.port)
@@ -123,7 +122,7 @@ object GetW2VSimilarSentences {
           try {
             val pipeline = createNLPPipeline()
             val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline, 0))
+              (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline))
             doc_lemmas
           } catch {
             case e: Exception => Tuple2(None, List.empty[String])
@@ -138,7 +137,7 @@ object GetW2VSimilarSentences {
               s._2.getOrElse(v, "")
             } ).mkString(" ")
             val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline, 0))
+              (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline))
             doc_lemmas
           } catch {
             case e: Exception => Tuple2(None, List.empty[String])
@@ -148,21 +147,6 @@ object GetW2VSimilarSentences {
     }
 
     val documents = docTerms.filter(_._1 != "").filter(_._2 != List.empty[String]).map(x => (x._1.toString, x._2))
-
-/*
-    val w2vfile = sc.textFile(params.inputW2VModel).map(_.trim)
-
-    val model = w2vfile.map( line => {
-      val items : Array[String] = line.split(" ")
-      val key : String = items(0)
-      val values : Array[Float] = items.drop(1).map(x => Try(x.toFloat).getOrElse(0.toFloat))
-      (key, values)
-    })
-
-    model.persist(StorageLevel.MEMORY_AND_DISK)
-    val w2vModel = new Word2VecModel(model.collectAsMap().toMap)
-*/
-
     val w2vModel = Word2VecModel.load(sc, params.inputW2VModel)
     val query_id_prefix : String = "io.elegans.clustering.query_sentence_tmp_"
     val v_size = w2vModel.getVectors.head._2.length
@@ -170,14 +154,11 @@ object GetW2VSimilarSentences {
     val enumeratedQueryItems = querySentences.zipWithIndex.map(x => {
       val pipeline = createNLPPipeline()
       (query_id_prefix + x._2,
-        plainTextToLemmas(x._1, stopWords, pipeline, 0)
+        plainTextToLemmas(x._1, stopWords, pipeline)
         )
     })
 
     val merged_collection = enumeratedQueryItems.union(documents)
-
-    val tmp_out = params.outputDir + "_TOKENIZATION"
-    merged_collection.saveAsTextFile(tmp_out)
 
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
     val docVectors = if(params.tfidf) {
@@ -248,8 +229,16 @@ object GetW2VSimilarSentences {
       (cs, x._1._1, x._2._1)
     }).filter(_._1 >= params.similarity_threshold)
 
-    val outResultsDirnameFilePath = params.outputDir
-    similarity_values.saveAsTextFile(outResultsDirnameFilePath)
+    val affinityMatrixValues = similarity_values.zipWithIndex.map(x => {(x._2 + 1, x._2 + 2, x._1._1)})
+
+    val PIClusteringModel = new PowerIterationClustering()
+      .setK(50)
+      .setMaxIterations(200)
+      .setInitializationMode("degree")
+      .run(affinityMatrixValues)
+
+//    val outResultsDirnameFilePath = params.outputDir
+//    similarity_values.saveAsTextFile(outResultsDirnameFilePath)
 
   }
 
