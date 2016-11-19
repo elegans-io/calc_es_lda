@@ -1,10 +1,9 @@
 package io.elegans.clustering
 
 import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Matrix, Vector, Vectors}
+import org.apache.spark.mllib.linalg.{DenseVector, Matrix, SparseVector, Vector, Vectors}
 import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
 import org.apache.spark.mllib.feature.{HashingTF, IDF}
-import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.clustering.PowerIterationClustering
 import org.apache.spark.mllib.linalg.distributed.{IndexedRowMatrix, MatrixEntry, RowMatrix}
 import org.apache.spark.SparkContext
@@ -82,6 +81,18 @@ object PowerIterationClustering {
                              maxIterations: Int = 1000,
                              similarity_threshold : Double = 0.0
                            )
+
+  private def getIds(hashingTF: HashingTF, tuple: Tuple2[String, Vector]): Tuple3[String, Long, Vector] = {
+    val index_a_v = hashingTF.transform(Seq(tuple._1))
+    val index_a: Long = index_a_v.argmax
+    (tuple._1, index_a, tuple._2)
+  }
+
+  private def getCosineSimilarity(pairs: Tuple2[Tuple3[String, Long, Vector], Tuple3[String, Long, Vector]]):
+      Tuple3[Tuple3[String, Long, Vector], Tuple3[String, Long, Vector], Double] = {
+    val cs = cosineSimilarity(pairs._1._3, pairs._2._3)
+    (pairs._1, pairs._2, cs)
+  }
 
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering")
@@ -218,21 +229,13 @@ object PowerIterationClustering {
       sentenceVectors
     }
 
-    val similarity_values = docVectors.cartesian(docVectors).filter(x => {
-      x._1._1 != x._2._1
-    }).map(x => {
-      val cs = cosineSimilarity(x._1._2, x._2._2)
-      (cs, x._1._1, x._2._1)
-    }).filter(_._1 >= params.similarity_threshold)
-
     val hashingTF = new HashingTF()
-    val affinityMatrixValues = similarity_values.map(x => {
-      val index_a_v = hashingTF.transform(Seq(x._2))
-      val index_b_v = hashingTF.transform(Seq(x._3))
-      val index_a: Long = index_a_v.argmax
-      val index_b: Long = index_b_v.argmax
-      (((x._2, index_a), (x._3, index_b)), (index_a, index_b, x._1))
-    })
+    val docsWithIds = docVectors.map(x => {getIds(hashingTF, x)})
+    val similarity_values = docsWithIds.cartesian(docsWithIds).filter(x => {
+      x._1._2 != x._2._2
+    }).map(x => getCosineSimilarity(x)).filter(_._3 >= params.similarity_threshold)
+
+    val affinityMatrixValues = similarity_values.map(x => { (x._1._2, x._2._2, x._3) } )
 
     val max_k : Int = params.max_k
     val min_k : Int = params.min_k
@@ -243,11 +246,11 @@ object PowerIterationClustering {
         .setK(k)
         .setMaxIterations(params.maxIterations)
         .setInitializationMode("degree")
-        .run(affinityMatrixValues.values)
+        .run(affinityMatrixValues)
 
       val clusters = piClusteringModel.assignments
 
-      val outTopicPerDocumentDirname = "PICLUSTER_W2V_TOPICSxDOC_K." + k
+      val outTopicPerDocumentDirname = "PI_CLUSTER_W2V_TOPICSxDOC_K." + k
       val outTopicPerDocumentFilePath = params.outputDir + "/" + outTopicPerDocumentDirname
 
       clusters.saveAsTextFile(outTopicPerDocumentFilePath)

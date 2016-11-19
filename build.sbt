@@ -12,8 +12,8 @@ resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/re
                   Resolver.bintrayRepo("hseeberger", "maven"))
 
 libraryDependencies ++= Seq(
-	"org.apache.spark" %% "spark-core" % "2.0.0" % "provided",
-	"org.apache.spark" %% "spark-mllib" % "2.0.0" % "provided",
+	"org.apache.spark" %% "spark-core" % "2.0.1" % "provided",
+	"org.apache.spark" %% "spark-mllib" % "2.0.1" % "provided",
 	"org.elasticsearch" % "elasticsearch-spark_2.11" % "2.4.0",
 	"edu.stanford.nlp" % "stanford-corenlp" % "3.6.0",
 	"edu.stanford.nlp" % "stanford-corenlp" % "3.6.0" classifier "models",
