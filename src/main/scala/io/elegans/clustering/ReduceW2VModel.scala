@@ -41,7 +41,7 @@ object ReduceW2VModel {
          token <- sentence.get(classOf[TokensAnnotation])) {
       val lemma = token.getString(classOf[LemmaAnnotation])
   	  val lc_lemma = lemma.toLowerCase
-      if (lc_lemma.length > 2 && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
+      if (!stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
         lemmas += lc_lemma.toLowerCase
       }
     }
@@ -57,7 +57,7 @@ object ReduceW2VModel {
     inputfile: String = "",
     group_by_field: Option[String] = None,
     outputfile: String = "/tmp/w2v_model.txt",
-    stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt")
+    stopwordFile: Option[String] = None
   )
 
   private def doReduceW2V(params: Params) {

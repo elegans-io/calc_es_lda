@@ -60,14 +60,22 @@ object KMeansW2VClustering {
     used_fields: Seq[String] = Seq[String]("question", "answer"),
     group_by_field: Option[String] = None,
     outputDir: String = "/tmp",
-    stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
+    stopwordFile: Option[String] = None,
     inputW2VModel: String = "",
-    maxIterations: Int = 10,
+    maxIterations: Int = 1000,
     max_k: Int = 10,
     min_k: Int = 8,
-    avg: Boolean = true,
-    tfidf: Boolean = false
+    avg: Boolean = false,
+    tfidf: Boolean = false,
+    scale: Boolean = false
   )
+
+  private def scaleTo1(v: Vector) : Vector = {
+    val array = v.toDense.toArray
+    val norm = math.sqrt(array.map(math.pow(_,2)).sum)
+    val scaled_v = array.map(x => { x / norm } )
+    Vectors.dense(scaled_v)
+  }
 
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering")
@@ -141,7 +149,7 @@ object KMeansW2VClustering {
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
     val docVectors = if(params.tfidf) {
       val hashingTF = new HashingTF()
-      val tf: RDD[Vector] = hashingTF.transform(documents.values)
+      val tf: RDD[Vector] = hashingTF.transform(documents.values) // values -> get the value from the (key, value) pair
       tf.cache()
 
       val idf_filtered = new IDF(minDocFreq = 2).fit(tf) // compute the inverse document frequency
@@ -196,21 +204,24 @@ object KMeansW2VClustering {
           (e._1.toString, Vectors.dense(v_phrase_sum))
         }
       })
+
       sentenceVectors
     }
 
-  val numIterations = params.maxIterations
-  val indata = docVectors.map(_._2)
+  val scaler : Vector => Vector = if(params.scale) { scaleTo1 } else { identity }
+  val documentVectors = docVectors.map(x => {(x._1, scaler(x._2))})
+  val indata = documentVectors.map(_._2)
   indata.cache()
 
   val max_k : Int = params.max_k
   val min_k : Int = params.min_k
   var k : Int = min_k
+  val numIterations = params.maxIterations
   var iterate : Boolean = true
   do {
     val clusters = KMeans.train(indata, k, numIterations)
 
-    val predictions = docVectors.map(x => {
+    val predictions = documentVectors.map(x => {
       (x._1, clusters.predict(x._2))
     })
 
@@ -276,10 +287,12 @@ object KMeansW2VClustering {
       opt[String]("inputW2VModel")
         .text(s"the input word2vec model")
         .action((x, c) => c.copy(inputW2VModel = x))
-      opt[Unit]("avg").text("this flag disable the vectors")
-        .action( (x, c) => c.copy(avg = false))
+      opt[Unit]("avg").text("this flag enable the vectors")
+        .action( (x, c) => c.copy(avg = true))
       opt[Unit]("tfidf").text("this flag enable tfidf term weighting")
-        .action( (x, c) => c.copy(tfidf = false))
+        .action( (x, c) => c.copy(tfidf = true))
+      opt[Unit]("scale").text("this flag enable vector scaling to 1")
+        .action( (x, c) => c.copy(scale = true))
     }
 
     parser.parse(args, defaultParams) match {
