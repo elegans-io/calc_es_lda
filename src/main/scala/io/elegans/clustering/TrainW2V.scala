@@ -9,8 +9,10 @@ import scopt.OptionParser
 object TrainW2V {
 
   lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
+  lazy val loadData = new LoadData
 
   private case class Params(
+    inputfile: Option[String] = None,
     hostname: String = "localhost",
     port: String = "9200",
     search_path: String = "jenny-en-0/question",
@@ -26,12 +28,14 @@ object TrainW2V {
 
   private def doTrainW2V(params: Params) {
     val conf = new SparkConf().setAppName("LDA from ES data")
-    conf.set("es.nodes.wan.only", "true")
-    conf.set("es.nodes", params.hostname)
-    conf.set("es.port", params.port)
 
-    val query: String = params.query
-    conf.set("es.query", query)
+    if (! params.inputfile.isEmpty) {
+      conf.set("es.nodes.wan.only", "true")
+      conf.set("es.nodes", params.hostname)
+      conf.set("es.port", params.port)
+      val query: String = params.query
+      conf.set("es.query", query)
+    }
 
     val sc = new SparkContext(conf)
     val search_res = sc.esRDD(params.search_path, "?q=*")
@@ -43,47 +47,17 @@ object TrainW2V {
       case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
     }
 
-    /* docTerms: map of (docid, list_of_lemmas) */
-    val used_fields = params.used_fields
-    val docTerms = params.group_by_field match {
-      case Some(group_by_field) =>
-        val tmpDocTerms = search_res.map(s => {
-          val key = s._2.getOrElse(group_by_field, "")
-          (key, s._2)
-        }
-        ).groupByKey().map( s => {
-          val conversation : String = s._2.foldRight("")((a, b) =>
-            try {
-              val c = used_fields.map( v => { a.getOrElse(v, None) } )
-                .filter(x => x != None).mkString(" ") + " " + b
-              c
-            } catch {
-              case e: Exception => ""
-            }
-          )
-          try {
-            val token_list = textProcessingUtils.tokenizeSentence(conversation, stopWords, 0)
-            val doc_lemmas = (s._1, token_list)
-            doc_lemmas
-          } catch {
-            case e: Exception => (None, List[String]())
-          }
-        })
-        tmpDocTerms
-      case None =>
-        val tmpDocTerms = search_res.map(s => {
-          try {
-            val doctext = used_fields.map( v => {
-                s._2.getOrElse(v, "")
-              } ).mkString(" ")
-            val token_list = textProcessingUtils.tokenizeSentence(doctext, stopWords, 0)
-            val doc_lemmas = (s._1, token_list)
-            doc_lemmas
-          } catch {
-            case e: Exception => (None, List[String]())
-          }
-        })
-        tmpDocTerms
+    val docTerms = if (! params.inputfile.isEmpty) {
+      val documentTerms = loadData.loadDocumentsFromES(sc = sc, search_path = params.search_path,
+        used_fields = params.used_fields, group_by_field = params.group_by_field).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+      })
+      documentTerms
+    } else {
+      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+      })
+      documentTerms
     }
 
     val word2vec = new Word2Vec()
@@ -102,6 +76,10 @@ object TrainW2V {
     val parser = new OptionParser[Params]("Train a W2V model") {
       head("Train a W2V model taking input data from ES.")
       help("help").text("prints this usage text")
+      opt[String]("inputfile")
+        .text(s"the file with sentences (one per line), when specified elasticsearch is not used" +
+          s"  default: ${defaultParams.inputfile}")
+        .action((x, c) => c.copy(inputfile = Option(x)))
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")

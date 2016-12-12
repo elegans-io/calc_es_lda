@@ -3,37 +3,39 @@ package io.elegans.clustering
 import scala.util.Try
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
-import org.elasticsearch.spark._
 import scopt.OptionParser
 import org.apache.spark.storage.StorageLevel
 
 object ReduceW2VModel {
 
   lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
+  lazy val loadData = new LoadData
 
   private case class Params(
+    inputfile: Option[String] = None,
     hostname: String = "localhost",
     port: String = "9200",
     search_path: String = "jenny-en-0/question",
     query: String = """{ "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }""",
     used_fields: Seq[String] = Seq[String]("question", "answer"),
-    inputfile: String = "",
+    inputmodel: String = "",
     group_by_field: Option[String] = None,
     outputfile: String = "/tmp/w2v_model.txt",
     stopwordsFile: Option[String] = None
   )
 
   private def doReduceW2V(params: Params) {
-    val conf = new SparkConf().setAppName("ReduceW2VModel")
-    conf.set("es.nodes.wan.only", "true")
-    conf.set("es.nodes", params.hostname)
-    conf.set("es.port", params.port)
+    val conf : SparkConf = new SparkConf().setAppName("ReduceW2VModel")
 
-    val query: String = params.query
-    conf.set("es.query", query)
+    if (! params.inputfile.isEmpty) {
+      conf.set("es.nodes.wan.only", "true")
+      conf.set("es.nodes", params.hostname)
+      conf.set("es.port", params.port)
+      val query: String = params.query
+      conf.set("es.query", query)
+    }
 
-    val sc = new SparkContext(conf)
-    val search_res = sc.esRDD(params.search_path, "?q=*")
+    val sc : SparkContext = new SparkContext(conf)
 
     val stopWords = params.stopwordsFile match {  /* check the stopWord variable */
       case Some(stopwordsFile) => sc.broadcast(scala.io.Source.fromFile(stopwordsFile) /* load the stopWords if Option
@@ -42,54 +44,24 @@ object ReduceW2VModel {
       case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
     }
 
-    /* docTerms: map of (docid, list_of_lemmas) */
-    val used_fields = params.used_fields
-    val docTerms = params.group_by_field match {
-      case Some(group_by_field) =>
-        val tmpDocTerms = search_res.map(s => {
-          val key = s._2.getOrElse(group_by_field, "")
-          (key, List(s._2))
-        }
-        ).reduceByKey(_ ++ _).map( s => {
-          val conversation : String = s._2.foldRight("")((a, b) =>
-            try {
-              val c = used_fields.map( v => { a.getOrElse(v, None) } )
-                .filter(x => x != None).mkString(" ") + " " + b
-              c
-            } catch {
-              case e: Exception => ""
-            }
-          )
-          try {
-            val token_list = textProcessingUtils.tokenizeSentence(conversation, stopWords)
-            val doc_lemmas = (s._1, token_list.toSet)
-            doc_lemmas
-          } catch {
-            case e: Exception => (None, Set[String]())
-          }
-        })
-        tmpDocTerms
-      case None =>
-        val tmpDocTerms = search_res.map(s => {
-          try {
-            val doctext = used_fields.map( v => {
-                s._2.getOrElse(v, "")
-              } ).mkString(" ")
-            val token_list = textProcessingUtils.tokenizeSentence(doctext, stopWords)
-            val doc_lemmas = (s._1, token_list.toSet)
-            doc_lemmas
-          } catch {
-            case e: Exception => (None, Set[String]())
-          }
-        })
-        tmpDocTerms
+    val docTerms = if (! params.inputfile.isEmpty) {
+      val documentTerms = loadData.loadDocumentsFromES(sc = sc, search_path = params.search_path,
+        used_fields = params.used_fields, group_by_field = params.group_by_field).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0).toSet
+      })
+      documentTerms
+    } else {
+      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0).toSet
+      })
+      documentTerms
     }
 
     docTerms.persist(StorageLevel.MEMORY_AND_DISK_SER_2)
 
     val terms : Set[String] = docTerms.map(_._2).fold(Set.empty[String])((a, b) => a ++ b)
 
-    val w2vfile = sc.textFile(params.inputfile).map(_.trim)
+    val w2vfile = sc.textFile(params.inputmodel).map(_.trim)
 
     val filteredEntries = w2vfile.map( line => {
       val items : Array[String] = line.split(" ")
@@ -107,6 +79,10 @@ object ReduceW2VModel {
     val parser = new OptionParser[Params]("Generate a reduced W2V model by selecting only the vectors of the words used in the dataset") {
       head("Train a W2V model taking input data from ES.")
       help("help").text("prints this usage text")
+      opt[String]("inputfile")
+        .text(s"the file with sentences (one per line), when specified elasticsearch is not used" +
+          s"  default: ${defaultParams.inputfile}")
+        .action((x, c) => c.copy(inputfile = Option(x)))
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")
@@ -135,9 +111,9 @@ object ReduceW2VModel {
         .text(s"list of fields to use for LDA, if more than one they will be merged" +
           s"  default: ${defaultParams.used_fields}")
         .action((x, c) => c.copy(used_fields = x))
-      opt[String]("inputfile")
+      opt[String]("inputmodel")
         .text(s"the file with the model")
-        .action((x, c) => c.copy(inputfile = x))
+        .action((x, c) => c.copy(inputmodel = x))
       opt[String]("outputfile")
         .text(s"the output file" +
           s"  default: ${defaultParams.outputfile}")
