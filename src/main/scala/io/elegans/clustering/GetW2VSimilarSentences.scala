@@ -18,44 +18,12 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark._
 import org.apache.spark.streaming._
 
-/* import core nlp */
-import edu.stanford.nlp.pipeline._
-import edu.stanford.nlp.ling.CoreAnnotations._
-/* these are necessary since core nlp is a java library */
-import java.util.Properties
-import scala.collection.JavaConversions._
-
 /**
   * Created by angelo on 14/11/16.
   */
 object GetW2VSimilarSentences {
 
-  def createNLPPipeline(): StanfordCoreNLP = {
-    val props = new Properties()
-    props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
-    val pipeline: StanfordCoreNLP = new StanfordCoreNLP(props)
-    pipeline
-  }
-
-  def isOnlyLetters(str: String): Boolean = {
-    str.forall(c => Character.isLetter(c))
-  }
-
-  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP, min_token_length: Int = 2): List[String] = {
-    val doc: Annotation = new Annotation(text)
-    pipeline.annotate(doc)
-    val lemmas = new ArrayBuffer[String]()
-    val sentences = doc.get(classOf[SentencesAnnotation])
-    for (sentence <- sentences;
-         token <- sentence.get(classOf[TokensAnnotation])) {
-      val lemma = token.getString(classOf[LemmaAnnotation])
-      val lc_lemma = lemma.toLowerCase
-      if (lc_lemma.length > min_token_length && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
-        lemmas += lc_lemma.toLowerCase
-      }
-    }
-    lemmas.toList
-  }
+  lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
 
   def cosineSimilarity(a: Vector, b: Vector) : Double = {
     val values = a.toDense.toArray.zip(b.toDense.toArray).map(x => {
@@ -73,7 +41,7 @@ object GetW2VSimilarSentences {
                              used_fields: Seq[String] = Seq[String]("question", "answer"),
                              group_by_field: Option[String] = None,
                              outputDir: String = "/tmp",
-                             stopwordFile: Option[String] = None,
+                             stopwordsFile: Option[String] = None,
                              inputW2VModel: String = "",
                              avg: Boolean = false,
                              tfidf : Boolean = false,
@@ -94,10 +62,11 @@ object GetW2VSimilarSentences {
     val ssc = new StreamingContext(sc, Seconds(1))
     val search_res = sc.esRDD(params.search_path, "?q=*")
 
-    val stopWords: Set[String] = params.stopwordFile match {
-      case Some(stopwordFile) => sc.broadcast(scala.io.Source.fromFile(stopwordFile)
-        .getLines().map(_.trim).toSet).value
-      case None => Set.empty
+    val stopWords = params.stopwordsFile match {  /* check the stopWord variable */
+      case Some(stopwordsFile) => sc.broadcast(scala.io.Source.fromFile(stopwordsFile) /* load the stopWords if Option
+                                                variable contains an existing value */
+        .getLines().map(_.trim).toSet)
+      case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
     }
 
     val querySentences = sc.textFile(params.input_sentences).map(_.trim)
@@ -121,9 +90,9 @@ object GetW2VSimilarSentences {
             }
           )
           try {
-            val pipeline = createNLPPipeline()
+            val token_list = textProcessingUtils.tokenizeSentence(conversation, stopWords, 0)
             val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline, 0))
+              (s._1.toString, token_list)
             doc_lemmas
           } catch {
             case e: Exception => Tuple2(None, List.empty[String])
@@ -133,12 +102,12 @@ object GetW2VSimilarSentences {
       case None =>
         val tmpDocTerms = search_res.map(s => {
           try {
-            val pipeline = createNLPPipeline()
             val doctext = used_fields.map( v => {
               s._2.getOrElse(v, "")
             } ).mkString(" ")
+            val token_list = textProcessingUtils.tokenizeSentence(doctext, stopWords, 0)
             val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline, 0))
+              (s._1.toString, token_list)
             doc_lemmas
           } catch {
             case e: Exception => Tuple2(None, List.empty[String])
@@ -168,10 +137,8 @@ object GetW2VSimilarSentences {
     val v_size = w2vModel.getVectors.head._2.length
 
     val enumeratedQueryItems = querySentences.zipWithIndex.map(x => {
-      val pipeline = createNLPPipeline()
-      (query_id_prefix + x._2,
-        plainTextToLemmas(x._1, stopWords, pipeline, 0)
-        )
+      val token_list = textProcessingUtils.tokenizeSentence(x._1, stopWords, 0)
+      (query_id_prefix + x._2, token_list)
     })
 
     val merged_collection = enumeratedQueryItems.union(documents)
@@ -278,10 +245,10 @@ object GetW2VSimilarSentences {
         .text(s"a json string with the query" +
           s"  default: ${defaultParams.query}")
         .action((x, c) => c.copy(query = x))
-      opt[String]("stopwordFile")
+      opt[String]("stopwordsFile")
         .text(s"filepath for a list of stopwords. Note: This must fit on a single machine." +
-          s"  default: ${defaultParams.stopwordFile}")
-        .action((x, c) => c.copy(stopwordFile = Option(x)))
+          s"  default: ${defaultParams.stopwordsFile}")
+        .action((x, c) => c.copy(stopwordsFile = Option(x)))
       opt[Seq[String]]("used_fields")
         .text(s"list of fields to use for LDA, if more than one they will be merged" +
           s"  default: ${defaultParams.used_fields}")

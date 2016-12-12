@@ -16,43 +16,11 @@ import scala.collection.mutable.MutableList
 
 import scopt.OptionParser
 
-/* import core nlp */
-import edu.stanford.nlp.pipeline._
-import edu.stanford.nlp.ling.CoreAnnotations._
-/* these are necessary since core nlp is a java library */
-import java.util.Properties
-import scala.collection.JavaConversions._
-
 import org.apache.spark.storage.StorageLevel
 
 object CalcLDA {
 
-  def createNLPPipeline(): StanfordCoreNLP = {
-    val props = new Properties()
-    props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
-    val pipeline: StanfordCoreNLP = new StanfordCoreNLP(props)
-    pipeline
-  }
-
-  def isOnlyLetters(str: String): Boolean = {
-    str.forall(c => Character.isLetter(c))
-  }
-
-  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP): List[String] = {
-    val doc: Annotation = new Annotation(text)
-    pipeline.annotate(doc)
-    val lemmas = new ArrayBuffer[String]()
-    val sentences = doc.get(classOf[SentencesAnnotation])
-    for (sentence <- sentences;
-         token <- sentence.get(classOf[TokensAnnotation])) {
-      val lemma = token.getString(classOf[LemmaAnnotation])
-      val lc_lemma = lemma.toLowerCase
-      if (lc_lemma.length > 2 && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
-        lemmas += lc_lemma.toLowerCase
-      }
-    }
-    lemmas.toList
-  }
+  lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
 
   private case class Params(
     hostname: String = "localhost",
@@ -65,7 +33,7 @@ object CalcLDA {
     min_k: Int = 8,
     maxIterations: Int = 100,
     outputDir: String = "/tmp",
-    stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
+    stopwordsFile: Option[String] = Option("stopwords/en_stopwords.txt"),
     maxTermsPerTopic: Int = 10,
     max_topics_per_doc: Int = 10)
 
@@ -81,10 +49,11 @@ object CalcLDA {
     val sc = new SparkContext(conf)
     val search_res = sc.esRDD(params.search_path, "?q=*")
 
-    val stopWords: Set[String] = params.stopwordFile match {
-      case Some(stopwordFile) => sc.broadcast(scala.io.Source.fromFile(stopwordFile)
-        .getLines().map(_.trim).toSet).value
-      case None => Set.empty
+    val stopWords = params.stopwordsFile match {  /* check the stopWord variable */
+      case Some(stopwordsFile) => sc.broadcast(scala.io.Source.fromFile(stopwordsFile) /* load the stopWords if Option
+                                                variable contains an existing value */
+        .getLines().map(_.trim).toSet)
+      case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
     }
 
     /* docTerms: map of (docid, list_of_lemmas) */
@@ -106,9 +75,9 @@ object CalcLDA {
             }
           )
           try {
-            val pipeline = createNLPPipeline()
+            val token_list = textProcessingUtils.tokenizeSentence(conversation, stopWords)
             val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline))
+              (s._1.toString, token_list)
             doc_lemmas
           } catch {
             case e: Exception => Tuple2(None, List.empty[String])
@@ -118,12 +87,12 @@ object CalcLDA {
       case None =>
         val tmpDocTerms = search_res.map(s => {
           try {
-            val pipeline = createNLPPipeline()
             val doctext = used_fields.map( v => {
               s._2.getOrElse(v, "")
             } ).mkString(" ")
+            val token_list = textProcessingUtils.tokenizeSentence(doctext, stopWords)
             val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline))
+              (s._1.toString, token_list)
             doc_lemmas
           } catch {
             case e: Exception => Tuple2(None, List.empty[String])
@@ -285,10 +254,10 @@ object CalcLDA {
       opt[Int]("maxIterations")
         .text(s"number of iterations of learning. default: ${defaultParams.maxIterations}")
         .action((x, c) => c.copy(maxIterations = x))
-      opt[String]("stopwordFile")
+      opt[String]("stopwordsFile")
         .text(s"filepath for a list of stopwords. Note: This must fit on a single machine." +
-          s"  default: ${defaultParams.stopwordFile}")
-        .action((x, c) => c.copy(stopwordFile = Option(x)))
+          s"  default: ${defaultParams.stopwordsFile}")
+        .action((x, c) => c.copy(stopwordsFile = Option(x)))
       opt[Seq[String]]("used_fields")
         .text(s"list of fields to use for LDA, if more than one they will be merged" +
           s"  default: ${defaultParams.used_fields}")
