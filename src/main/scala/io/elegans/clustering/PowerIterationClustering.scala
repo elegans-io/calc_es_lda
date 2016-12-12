@@ -1,20 +1,15 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.mllib.linalg.{DenseVector, Matrix, SparseVector, Vector, Vectors}
-import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
+import org.apache.spark.mllib.feature.{Word2VecModel}
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.feature.{HashingTF, IDF}
 import org.apache.spark.mllib.clustering.PowerIterationClustering
-import org.apache.spark.mllib.linalg.distributed.{IndexedRowMatrix, MatrixEntry, RowMatrix}
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import org.elasticsearch.spark._
 
-import scala.collection.mutable.{ArrayBuffer, HashMap}
 import scopt.OptionParser
 import org.apache.spark.rdd.RDD
-import org.apache.spark._
-import org.apache.spark.streaming._
 
 /**
   * Created by angelo on 14/11/16.
@@ -64,6 +59,7 @@ object PowerIterationClustering {
 
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering")
+
     conf.set("es.nodes.wan.only", "true")
     conf.set("es.nodes", params.hostname)
     conf.set("es.port", params.port)
@@ -72,7 +68,6 @@ object PowerIterationClustering {
     conf.set("es.query", query)
 
     val sc = new SparkContext(conf)
-    val ssc = new StreamingContext(sc, Seconds(1))
     val search_res = sc.esRDD(params.search_path, "?q=*")
 
     val stopWords = params.stopwordsFile match {  /* check the stopWord variable */

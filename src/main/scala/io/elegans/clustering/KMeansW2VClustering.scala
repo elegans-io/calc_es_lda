@@ -1,19 +1,16 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Matrix, Vector, Vectors}
-import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
+import org.apache.spark.mllib.feature.{Word2VecModel}
+import org.apache.spark.mllib.linalg.{Vectors}
+import org.apache.spark.mllib.clustering.{KMeans}
 import org.apache.spark.mllib.feature.{HashingTF, IDF}
 import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.linalg.distributed.{IndexedRowMatrix, MatrixEntry, RowMatrix}
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import org.elasticsearch.spark._
 
-import scala.collection.mutable.{ArrayBuffer, HashMap}
 import scopt.OptionParser
 import org.apache.spark.rdd.RDD
-import org.apache.spark._
 import org.apache.spark.streaming._
 
 object KMeansW2VClustering {
@@ -55,7 +52,6 @@ object KMeansW2VClustering {
     conf.set("es.query", query)
 
     val sc = new SparkContext(conf)
-    val ssc = new StreamingContext(sc, Seconds(1))
     val search_res = sc.esRDD(params.search_path, "?q=*")
 
     val stopWords = params.stopwordsFile match {  /* check the stopWord variable */

@@ -1,16 +1,10 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.clustering.{LDA, DistributedLDAModel, OnlineLDAOptimizer, EMLDAOptimizer}
+import org.apache.spark.mllib.clustering.{LDA, DistributedLDAModel, EMLDAOptimizer}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
 import org.elasticsearch.spark._
-
-import org.apache.spark.sql.SQLContext
-import org.elasticsearch.spark.sql._
-
-import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.MutableList
 

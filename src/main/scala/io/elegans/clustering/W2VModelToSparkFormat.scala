@@ -1,7 +1,6 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.feature.{Word2VecModel}
 
 import scala.util.Try
 import org.apache.spark.SparkContext
@@ -21,7 +20,6 @@ object W2VModelToSparkFormat {
       .set("spark.driver.maxResultSize", "16g")
 
     val sc = new SparkContext(conf)
-
     val w2vfile = sc.textFile(inputfile).map(_.trim)
 
     val model = w2vfile.map( line => {

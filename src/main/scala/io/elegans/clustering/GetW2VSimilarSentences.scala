@@ -1,22 +1,14 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Matrix, Vector, Vectors}
-import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
+import org.apache.spark.mllib.feature.{Word2VecModel}
+import org.apache.spark.mllib.linalg.{SparseVector, Vectors}
 import org.apache.spark.mllib.feature.{HashingTF, IDF}
 import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.linalg.distributed.{IndexedRowMatrix, MatrixEntry, RowMatrix}
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import org.elasticsearch.spark._
-import org.apache.spark.storage.StorageLevel
-import scala.util.Try
-
-import scala.collection.mutable.{ArrayBuffer, HashMap}
 import scopt.OptionParser
 import org.apache.spark.rdd.RDD
-import org.apache.spark._
-import org.apache.spark.streaming._
 
 /**
   * Created by angelo on 14/11/16.
@@ -24,14 +16,7 @@ import org.apache.spark.streaming._
 object GetW2VSimilarSentences {
 
   lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
-
-  def cosineSimilarity(a: Vector, b: Vector) : Double = {
-    val values = a.toDense.toArray.zip(b.toDense.toArray).map(x => {
-      (x._1 * x._2, scala.math.pow(x._1, 2), scala.math.pow(x._2, 2))
-      }).reduce((a,b) => (a._1 + b._1, a._2 + b._2, a._3 + b._3))
-    val cs = values._1 / (scala.math.sqrt(values._2) * scala.math.sqrt(values._3))
-    cs
-  }
+  lazy val termVectors = new TermVectors
 
   private case class Params(
                              hostname: String = "localhost",
@@ -59,7 +44,6 @@ object GetW2VSimilarSentences {
     conf.set("es.query", query)
 
     val sc = new SparkContext(conf)
-    val ssc = new StreamingContext(sc, Seconds(1))
     val search_res = sc.esRDD(params.search_path, "?q=*")
 
     val stopWords = params.stopwordsFile match {  /* check the stopWord variable */
@@ -118,20 +102,6 @@ object GetW2VSimilarSentences {
 
     val documents = docTerms.filter(_._1 != "").filter(_._2 != List.empty[String]).map(x => (x._1.toString, x._2))
 
-/*
-    val w2vfile = sc.textFile(params.inputW2VModel).map(_.trim)
-
-    val model = w2vfile.map( line => {
-      val items : Array[String] = line.split(" ")
-      val key : String = items(0)
-      val values : Array[Float] = items.drop(1).map(x => Try(x.toFloat).getOrElse(0.toFloat))
-      (key, values)
-    })
-
-    model.persist(StorageLevel.MEMORY_AND_DISK)
-    val w2vModel = new Word2VecModel(model.collectAsMap().toMap)
-*/
-
     val w2vModel = Word2VecModel.load(sc, params.inputW2VModel)
     val query_id_prefix : String = "io.elegans.clustering.query_sentence_tmp_"
     val v_size = w2vModel.getVectors.head._2.length
@@ -142,9 +112,6 @@ object GetW2VSimilarSentences {
     })
 
     val merged_collection = enumeratedQueryItems.union(documents)
-
-    val tmp_out = params.outputDir + "_TOKENIZATION"
-    merged_collection.saveAsTextFile(tmp_out)
 
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
     val docVectors = if(params.tfidf) {
@@ -178,9 +145,9 @@ object GetW2VSimilarSentences {
         if (params.avg) {
           val normal: Array[Double] = Array.fill[Double](v_size)(v_size)
           val v_phrase = List(v_phrase_sum, normal).reduce((x, y) => Tuple2(x, y).zipped.map(_ / _))
-          (e._1._1.toString, Vectors.dense(v_phrase))
+          (e._1._1.toString, Vectors.dense(v_phrase).toSparse)
         } else {
-          (e._1._1.toString, Vectors.dense(v_phrase_sum))
+          (e._1._1.toString, Vectors.dense(v_phrase_sum).toSparse)
         }
       })
       sentenceVectors
@@ -199,9 +166,9 @@ object GetW2VSimilarSentences {
         if (params.avg) {
           val normal: Array[Double] = Array.fill[Double](v_size)(v_size)
           val v_phrase = List(v_phrase_sum, normal).reduce((x, y) => Tuple2(x, y).zipped.map(_ / _))
-          (e._1.toString, Vectors.dense(v_phrase))
+          (e._1.toString, Vectors.dense(v_phrase).toSparse)
         } else {
-          (e._1.toString, Vectors.dense(v_phrase_sum))
+          (e._1.toString, Vectors.dense(v_phrase_sum).toSparse)
         }
       })
       sentenceVectors
@@ -211,13 +178,12 @@ object GetW2VSimilarSentences {
     val queryVectors = sc.parallelize(docVectors.take(numOfQuery.toInt))
 
     val similarity_values = queryVectors.cartesian(docVectors).filter(x => {x._1._1 != x._2._1}).map(x => {
-      val cs = cosineSimilarity(x._1._2, x._2._2)
+      val cs = termVectors.cosineSimilarity(x._1._2, x._2._2)
       (cs, x._1._1, x._2._1)
     }).filter(_._1 >= params.similarity_threshold)
 
     val outResultsDirnameFilePath = params.outputDir
     similarity_values.saveAsTextFile(outResultsDirnameFilePath)
-
   }
 
   def main(args: Array[String]) {

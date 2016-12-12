@@ -1,52 +1,14 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.clustering.{DistributedLDAModel, EMLDAOptimizer, LDA, OnlineLDAOptimizer}
-import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
+import org.apache.spark.mllib.feature.{Word2Vec}
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
 import org.elasticsearch.spark._
-import scala.collection.mutable.ArrayBuffer
 import scopt.OptionParser
-
-/* import core nlp */
-import edu.stanford.nlp.pipeline._
-import edu.stanford.nlp.ling.CoreAnnotations._
-/* these are necessary since core nlp is a java library */
-import java.util.Properties
-import scala.collection.JavaConversions._
-
-import org.apache.spark.storage.StorageLevel
 
 object TrainW2V {
 
-  def createNLPPipeline(): StanfordCoreNLP = {
-    val props = new Properties()
-    props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
-    val pipeline: StanfordCoreNLP = new StanfordCoreNLP(props)
-    pipeline
-  }
-
-  def isOnlyLetters(str: String): Boolean = {
-    str.forall(c => Character.isLetter(c))
-  }
-
-  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP): Seq[String] = {
-    val doc: Annotation = new Annotation(text)
-    pipeline.annotate(doc)
-    val lemmas = new ArrayBuffer[String]()
-    val sentences = doc.get(classOf[SentencesAnnotation])
-    for (sentence <- sentences;
-         token <- sentence.get(classOf[TokensAnnotation])) {
-      val lemma = token.getString(classOf[LemmaAnnotation])
-  	  val lc_lemma = lemma.toLowerCase
-      if (lc_lemma.length > 2 && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
-        lemmas += lc_lemma.toLowerCase
-      }
-    }
-	lemmas
-  }
+  lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
 
   private case class Params(
     hostname: String = "localhost",
@@ -56,7 +18,7 @@ object TrainW2V {
     used_fields: Seq[String] = Seq[String]("question", "answer"),
     group_by_field: Option[String] = None,
     outputDir: String = "/tmp",
-    stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
+    stopwordsFile: Option[String] = Option("stopwords/en_stopwords.txt"),
     vector_size: Int = 300,
     word_window_size: Int = 5,
     learningRate: Double = 0.025
@@ -74,10 +36,11 @@ object TrainW2V {
     val sc = new SparkContext(conf)
     val search_res = sc.esRDD(params.search_path, "?q=*")
 
-    val stopWords: Set[String] = params.stopwordFile match {
-      case Some(stopwordFile) => sc.broadcast(scala.io.Source.fromFile(stopwordFile)
-        .getLines().map(_.trim).toSet).value
-      case None => Set.empty
+    val stopWords = params.stopwordsFile match {  /* check the stopWord variable */
+      case Some(stopwordsFile) => sc.broadcast(scala.io.Source.fromFile(stopwordsFile) /* load the stopWords if Option
+                                                variable contains an existing value */
+        .getLines().map(_.trim).toSet)
+      case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
     }
 
     /* docTerms: map of (docid, list_of_lemmas) */
@@ -99,8 +62,8 @@ object TrainW2V {
             }
           )
           try {
-            val pipeline = createNLPPipeline()
-            val doc_lemmas = (s._1, plainTextToLemmas(conversation, stopWords, pipeline))
+            val token_list = textProcessingUtils.tokenizeSentence(conversation, stopWords, 0)
+            val doc_lemmas = (s._1, token_list)
             doc_lemmas
           } catch {
             case e: Exception => (None, List[String]())
@@ -110,11 +73,11 @@ object TrainW2V {
       case None =>
         val tmpDocTerms = search_res.map(s => {
           try {
-            val pipeline = createNLPPipeline()
             val doctext = used_fields.map( v => {
                 s._2.getOrElse(v, "")
               } ).mkString(" ")
-            val doc_lemmas = (s._1, plainTextToLemmas(doctext, stopWords, pipeline))
+            val token_list = textProcessingUtils.tokenizeSentence(doctext, stopWords, 0)
+            val doc_lemmas = (s._1, token_list)
             doc_lemmas
           } catch {
             case e: Exception => (None, List[String]())
@@ -159,10 +122,10 @@ object TrainW2V {
         .text(s"a json string with the query" +
           s"  default: ${defaultParams.query}")
         .action((x, c) => c.copy(query = x))
-      opt[String]("stopwordFile")
+      opt[String]("stopwordsFile")
         .text(s"filepath for a list of stopwords. Note: This must fit on a single machine." +
-          s"  default: ${defaultParams.stopwordFile}")
-        .action((x, c) => c.copy(stopwordFile = Option(x)))
+          s"  default: ${defaultParams.stopwordsFile}")
+        .action((x, c) => c.copy(stopwordsFile = Option(x)))
       opt[Seq[String]]("used_fields")
         .text(s"list of fields to use for LDA, if more than one they will be merged" +
           s"  default: ${defaultParams.used_fields}")
