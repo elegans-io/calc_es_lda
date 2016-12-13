@@ -1,60 +1,23 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.clustering.{LDA, DistributedLDAModel, OnlineLDAOptimizer, EMLDAOptimizer}
+import org.apache.spark.mllib.clustering.{LDA, DistributedLDAModel, EMLDAOptimizer}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
-import org.elasticsearch.spark._
-
-import org.apache.spark.sql.SQLContext
-import org.elasticsearch.spark.sql._
-
-import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.MutableList
 
 import scopt.OptionParser
 
-/* import core nlp */
-import edu.stanford.nlp.pipeline._
-import edu.stanford.nlp.ling.CoreAnnotations._
-/* these are necessary since core nlp is a java library */
-import java.util.Properties
-import scala.collection.JavaConversions._
-
 import org.apache.spark.storage.StorageLevel
 
 object CalcLDA {
 
-  def createNLPPipeline(): StanfordCoreNLP = {
-    val props = new Properties()
-    props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
-    val pipeline: StanfordCoreNLP = new StanfordCoreNLP(props)
-    pipeline
-  }
-
-  def isOnlyLetters(str: String): Boolean = {
-    str.forall(c => Character.isLetter(c))
-  }
-
-  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP): List[String] = {
-    val doc: Annotation = new Annotation(text)
-    pipeline.annotate(doc)
-    val lemmas = new ArrayBuffer[String]()
-    val sentences = doc.get(classOf[SentencesAnnotation])
-    for (sentence <- sentences;
-         token <- sentence.get(classOf[TokensAnnotation])) {
-      val lemma = token.getString(classOf[LemmaAnnotation])
-      val lc_lemma = lemma.toLowerCase
-      if (lc_lemma.length > 2 && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
-        lemmas += lc_lemma.toLowerCase
-      }
-    }
-    lemmas.toList
-  }
+  lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
+  lazy val loadData = new LoadData
 
   private case class Params(
+    inputfile: Option[String] = None,
     hostname: String = "localhost",
     port: String = "9200",
     search_path: String = "jenny-en-0/question",
@@ -65,71 +28,41 @@ object CalcLDA {
     min_k: Int = 8,
     maxIterations: Int = 100,
     outputDir: String = "/tmp",
-    stopwordFile: Option[String] = Option("stopwords/en_stopwords.txt"),
+    stopwordsFile: Option[String] = Option("stopwords/en_stopwords.txt"),
     maxTermsPerTopic: Int = 10,
     max_topics_per_doc: Int = 10)
 
   private def doLDA(params: Params) {
     val conf = new SparkConf().setAppName("LDA from ES data")
-    conf.set("es.nodes.wan.only", "true")
-    conf.set("es.nodes", params.hostname)
-    conf.set("es.port", params.port)
 
-    val query: String = params.query
-    conf.set("es.query", query)
-
-    val sc = new SparkContext(conf)
-    val search_res = sc.esRDD(params.search_path, "?q=*")
-
-    val stopWords: Set[String] = params.stopwordFile match {
-      case Some(stopwordFile) => sc.broadcast(scala.io.Source.fromFile(stopwordFile)
-        .getLines().map(_.trim).toSet).value
-      case None => Set.empty
+    if (! params.inputfile.isEmpty) {
+      conf.set("es.nodes.wan.only", "true")
+      conf.set("es.nodes", params.hostname)
+      conf.set("es.port", params.port)
+      val query: String = params.query
+      conf.set("es.query", query)
     }
 
-    /* docTerms: map of (docid, list_of_lemmas) */
-    val used_fields = params.used_fields
-    val docTerms = params.group_by_field match {
-      case Some(group_by_field) =>
-        val tmpDocTerms = search_res.map(s => {
-          val key = s._2.getOrElse(group_by_field, "")
-          (key, List(s._2))
-        }
-        ).reduceByKey(_ ++ _).map( s => {
-          val conversation : String = s._2.foldRight("")((a, b) =>
-            try {
-              val c = used_fields.map( v => { a.getOrElse(v, None) } )
-                .filter(x => x != None).mkString(" ") + " " + b
-              c
-            } catch {
-              case e: Exception => ""
-            }
-          )
-          try {
-            val pipeline = createNLPPipeline()
-            val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline))
-            doc_lemmas
-          } catch {
-            case e: Exception => Tuple2(None, List.empty[String])
-          }
-        })
-        tmpDocTerms
-      case None =>
-        val tmpDocTerms = search_res.map(s => {
-          try {
-            val pipeline = createNLPPipeline()
-            val doctext = used_fields.map( v => {
-              s._2.getOrElse(v, "")
-            } ).mkString(" ")
-            val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline))
-            doc_lemmas
-          } catch {
-            case e: Exception => Tuple2(None, List.empty[String])
-          }
-        })
-        tmpDocTerms
+    val sc = new SparkContext(conf)
+
+    val stopWords = params.stopwordsFile match {  /* check the stopWord variable */
+      case Some(stopwordsFile) => sc.broadcast(scala.io.Source.fromFile(stopwordsFile) /* load the stopWords if Option
+                                                variable contains an existing value */
+        .getLines().map(_.trim).toSet)
+      case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
+    }
+
+    val docTerms = if (! params.inputfile.isEmpty) {
+      val documentTerms = loadData.loadDocumentsFromES(sc = sc, search_path = params.search_path,
+        used_fields = params.used_fields, group_by_field = params.group_by_field).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+      })
+      documentTerms
+    } else {
+      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+      })
+      documentTerms
     }
 
     /* docTermFreqs: mapping <doc_id> -> (doc_id_str, Map(term, count)) ; term counts for each doc */
@@ -216,12 +149,12 @@ object CalcLDA {
       val topicIndices = ldaModel.describeTopics(maxTermsPerTopic = params.maxTermsPerTopic)
       val topics_out_data = topicIndices.zipWithIndex
         .map( entry => (entry._1._1, entry._1._2, entry._2)) //(terms, termWeights, topic_i)
-        .map( item => {
+        .flatMap( item => {
           val joined_terms = item._1.zip(item._2) // (term_id -> weight)
           val topic_items = joined_terms   /* topic_items -> num_of_topics, topic_id, term_id, term, weight */
             .map(topic_term => (k, item._3, topic_term._1, terms_id_list(topic_term._1)._1, topic_term._2))
           topic_items
-      }).flatten
+      })
       val topics_data_serializer = sc.parallelize(topics_out_data)
       topics_data_serializer.saveAsTextFile(outTopicFilePath)
       println("END SERIALIZATION OF TOPICS")
@@ -253,6 +186,10 @@ object CalcLDA {
     val parser = new OptionParser[Params]("LDA with ES data") {
       head("calculate LDA with data from an elasticsearch index.")
       help("help").text("prints this usage text")
+      opt[String]("inputfile")
+        .text(s"the file with sentences (one per line), when specified elasticsearch is not used" +
+          s"  default: ${defaultParams.inputfile}")
+        .action((x, c) => c.copy(inputfile = Option(x)))
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")
@@ -285,10 +222,10 @@ object CalcLDA {
       opt[Int]("maxIterations")
         .text(s"number of iterations of learning. default: ${defaultParams.maxIterations}")
         .action((x, c) => c.copy(maxIterations = x))
-      opt[String]("stopwordFile")
+      opt[String]("stopwordsFile")
         .text(s"filepath for a list of stopwords. Note: This must fit on a single machine." +
-          s"  default: ${defaultParams.stopwordFile}")
-        .action((x, c) => c.copy(stopwordFile = Option(x)))
+          s"  default: ${defaultParams.stopwordsFile}")
+        .action((x, c) => c.copy(stopwordsFile = Option(x)))
       opt[Seq[String]]("used_fields")
         .text(s"list of fields to use for LDA, if more than one they will be merged" +
           s"  default: ${defaultParams.used_fields}")

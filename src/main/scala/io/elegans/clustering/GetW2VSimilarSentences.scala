@@ -1,71 +1,25 @@
 package io.elegans.clustering
 
-import org.apache.spark.mllib.feature.{Word2Vec, Word2VecModel}
-import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Matrix, Vector, Vectors}
-import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
+import org.apache.spark.mllib.feature.{Word2VecModel}
+import org.apache.spark.mllib.linalg.{SparseVector, Vectors}
 import org.apache.spark.mllib.feature.{HashingTF, IDF}
 import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.linalg.distributed.{IndexedRowMatrix, MatrixEntry, RowMatrix}
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
-import org.elasticsearch.spark._
-import org.apache.spark.storage.StorageLevel
-import scala.util.Try
-
-import scala.collection.mutable.{ArrayBuffer, HashMap}
 import scopt.OptionParser
 import org.apache.spark.rdd.RDD
-import org.apache.spark._
-import org.apache.spark.streaming._
-
-/* import core nlp */
-import edu.stanford.nlp.pipeline._
-import edu.stanford.nlp.ling.CoreAnnotations._
-/* these are necessary since core nlp is a java library */
-import java.util.Properties
-import scala.collection.JavaConversions._
 
 /**
   * Created by angelo on 14/11/16.
   */
 object GetW2VSimilarSentences {
 
-  def createNLPPipeline(): StanfordCoreNLP = {
-    val props = new Properties()
-    props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
-    val pipeline: StanfordCoreNLP = new StanfordCoreNLP(props)
-    pipeline
-  }
-
-  def isOnlyLetters(str: String): Boolean = {
-    str.forall(c => Character.isLetter(c))
-  }
-
-  def plainTextToLemmas(text: String, stopWords: Set[String], pipeline: StanfordCoreNLP, min_token_length: Int = 2): List[String] = {
-    val doc: Annotation = new Annotation(text)
-    pipeline.annotate(doc)
-    val lemmas = new ArrayBuffer[String]()
-    val sentences = doc.get(classOf[SentencesAnnotation])
-    for (sentence <- sentences;
-         token <- sentence.get(classOf[TokensAnnotation])) {
-      val lemma = token.getString(classOf[LemmaAnnotation])
-      val lc_lemma = lemma.toLowerCase
-      if (lc_lemma.length > min_token_length && !stopWords.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
-        lemmas += lc_lemma.toLowerCase
-      }
-    }
-    lemmas.toList
-  }
-
-  def cosineSimilarity(a: Vector, b: Vector) : Double = {
-    val values = a.toDense.toArray.zip(b.toDense.toArray).map(x => {
-      (x._1 * x._2, scala.math.pow(x._1, 2), scala.math.pow(x._2, 2))
-      }).reduce((a,b) => (a._1 + b._1, a._2 + b._2, a._3 + b._3))
-    val cs = values._1 / (scala.math.sqrt(values._2) * scala.math.sqrt(values._3))
-    cs
-  }
+  lazy val textProcessingUtils = new TextProcessingUtils /* lazy initialization of TextProcessingUtils class */
+  lazy val termVectors = new TermVectors
+  lazy val loadData = new LoadData
 
   private case class Params(
+                             inputfile: Option[String] = None,
                              hostname: String = "localhost",
                              port: String = "9200",
                              search_path: String = "jenny-en-0/question",
@@ -73,7 +27,7 @@ object GetW2VSimilarSentences {
                              used_fields: Seq[String] = Seq[String]("question", "answer"),
                              group_by_field: Option[String] = None,
                              outputDir: String = "/tmp",
-                             stopwordFile: Option[String] = None,
+                             stopwordsFile: Option[String] = None,
                              inputW2VModel: String = "",
                              avg: Boolean = false,
                              tfidf : Boolean = false,
@@ -83,101 +37,51 @@ object GetW2VSimilarSentences {
 
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering").set("spark.driver.maxResultSize", "16g")
-    conf.set("es.nodes.wan.only", "true")
-    conf.set("es.nodes", params.hostname)
-    conf.set("es.port", params.port)
 
-    val query: String = params.query
-    conf.set("es.query", query)
+    if (! params.inputfile.isEmpty) {
+      conf.set("es.nodes.wan.only", "true")
+      conf.set("es.nodes", params.hostname)
+      conf.set("es.port", params.port)
+      val query: String = params.query
+      conf.set("es.query", query)
+    }
 
     val sc = new SparkContext(conf)
-    val ssc = new StreamingContext(sc, Seconds(1))
-    val search_res = sc.esRDD(params.search_path, "?q=*")
 
-    val stopWords: Set[String] = params.stopwordFile match {
-      case Some(stopwordFile) => sc.broadcast(scala.io.Source.fromFile(stopwordFile)
-        .getLines().map(_.trim).toSet).value
-      case None => Set.empty
+    val stopWords = params.stopwordsFile match {  /* check the stopWord variable */
+      case Some(stopwordsFile) => sc.broadcast(scala.io.Source.fromFile(stopwordsFile) /* load the stopWords if Option
+                                                variable contains an existing value */
+        .getLines().map(_.trim).toSet)
+      case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
     }
 
     val querySentences = sc.textFile(params.input_sentences).map(_.trim)
 
-    /* docTerms: map of (docid, list_of_lemmas) */
-    val used_fields = params.used_fields
-    val docTerms = params.group_by_field match {
-      case Some(group_by_field) =>
-        val tmpDocTerms = search_res.map(s => {
-          val key = s._2.getOrElse(group_by_field, "")
-          (key, List(s._2))
-        }
-        ).reduceByKey(_ ++ _).map( s => {
-          val conversation : String = s._2.foldRight("")((a, b) =>
-            try {
-              val c = used_fields.map( v => { a.getOrElse(v, None) } )
-                .filter(x => x != None).mkString(" ") + " " + b
-              c
-            } catch {
-              case e: Exception => ""
-            }
-          )
-          try {
-            val pipeline = createNLPPipeline()
-            val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(conversation, stopWords, pipeline, 0))
-            doc_lemmas
-          } catch {
-            case e: Exception => Tuple2(None, List.empty[String])
-          }
-        })
-        tmpDocTerms
-      case None =>
-        val tmpDocTerms = search_res.map(s => {
-          try {
-            val pipeline = createNLPPipeline()
-            val doctext = used_fields.map( v => {
-              s._2.getOrElse(v, "")
-            } ).mkString(" ")
-            val doc_lemmas : Tuple2[String, List[String]] =
-              (s._1.toString, plainTextToLemmas(doctext, stopWords, pipeline, 0))
-            doc_lemmas
-          } catch {
-            case e: Exception => Tuple2(None, List.empty[String])
-          }
-        })
-        tmpDocTerms
+    val docTerms = if (! params.inputfile.isEmpty) {
+      val documentTerms = loadData.loadDocumentsFromES(sc = sc, search_path = params.search_path,
+        used_fields = params.used_fields, group_by_field = params.group_by_field).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+      })
+      documentTerms
+    } else {
+      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+      })
+      documentTerms
     }
 
     val documents = docTerms.filter(_._1 != "").filter(_._2 != List.empty[String]).map(x => (x._1.toString, x._2))
-
-/*
-    val w2vfile = sc.textFile(params.inputW2VModel).map(_.trim)
-
-    val model = w2vfile.map( line => {
-      val items : Array[String] = line.split(" ")
-      val key : String = items(0)
-      val values : Array[Float] = items.drop(1).map(x => Try(x.toFloat).getOrElse(0.toFloat))
-      (key, values)
-    })
-
-    model.persist(StorageLevel.MEMORY_AND_DISK)
-    val w2vModel = new Word2VecModel(model.collectAsMap().toMap)
-*/
 
     val w2vModel = Word2VecModel.load(sc, params.inputW2VModel)
     val query_id_prefix : String = "io.elegans.clustering.query_sentence_tmp_"
     val v_size = w2vModel.getVectors.head._2.length
 
     val enumeratedQueryItems = querySentences.zipWithIndex.map(x => {
-      val pipeline = createNLPPipeline()
-      (query_id_prefix + x._2,
-        plainTextToLemmas(x._1, stopWords, pipeline, 0)
-        )
+      val token_list = textProcessingUtils.tokenizeSentence(x._1, stopWords, 0)
+      (query_id_prefix + x._2, token_list)
     })
 
     val merged_collection = enumeratedQueryItems.union(documents)
-
-    val tmp_out = params.outputDir + "_TOKENIZATION"
-    merged_collection.saveAsTextFile(tmp_out)
 
     /* docTermFreqs: mapping <doc_id> -> (vector_avg_of_term_vectors) */
     val docVectors = if(params.tfidf) {
@@ -211,9 +115,9 @@ object GetW2VSimilarSentences {
         if (params.avg) {
           val normal: Array[Double] = Array.fill[Double](v_size)(v_size)
           val v_phrase = List(v_phrase_sum, normal).reduce((x, y) => Tuple2(x, y).zipped.map(_ / _))
-          (e._1._1.toString, Vectors.dense(v_phrase))
+          (e._1._1.toString, Vectors.dense(v_phrase).toSparse)
         } else {
-          (e._1._1.toString, Vectors.dense(v_phrase_sum))
+          (e._1._1.toString, Vectors.dense(v_phrase_sum).toSparse)
         }
       })
       sentenceVectors
@@ -232,9 +136,9 @@ object GetW2VSimilarSentences {
         if (params.avg) {
           val normal: Array[Double] = Array.fill[Double](v_size)(v_size)
           val v_phrase = List(v_phrase_sum, normal).reduce((x, y) => Tuple2(x, y).zipped.map(_ / _))
-          (e._1.toString, Vectors.dense(v_phrase))
+          (e._1.toString, Vectors.dense(v_phrase).toSparse)
         } else {
-          (e._1.toString, Vectors.dense(v_phrase_sum))
+          (e._1.toString, Vectors.dense(v_phrase_sum).toSparse)
         }
       })
       sentenceVectors
@@ -244,13 +148,12 @@ object GetW2VSimilarSentences {
     val queryVectors = sc.parallelize(docVectors.take(numOfQuery.toInt))
 
     val similarity_values = queryVectors.cartesian(docVectors).filter(x => {x._1._1 != x._2._1}).map(x => {
-      val cs = cosineSimilarity(x._1._2, x._2._2)
+      val cs = termVectors.cosineSimilarity(x._1._2, x._2._2)
       (cs, x._1._1, x._2._1)
     }).filter(_._1 >= params.similarity_threshold)
 
     val outResultsDirnameFilePath = params.outputDir
     similarity_values.saveAsTextFile(outResultsDirnameFilePath)
-
   }
 
   def main(args: Array[String]) {
@@ -258,6 +161,10 @@ object GetW2VSimilarSentences {
     val parser = new OptionParser[Params]("Search similar sentences") {
       head("perform a similarity search using cosine vector as distance function")
       help("help").text("prints this usage text")
+      opt[String]("inputfile")
+        .text(s"the file with sentences (one per line), when specified elasticsearch is not used" +
+          s"  default: ${defaultParams.inputfile}")
+        .action((x, c) => c.copy(inputfile = Option(x)))
       opt[String]("hostname")
         .text(s"the hostname of the elasticsearch instance" +
           s"  default: ${defaultParams.hostname}")
@@ -278,10 +185,10 @@ object GetW2VSimilarSentences {
         .text(s"a json string with the query" +
           s"  default: ${defaultParams.query}")
         .action((x, c) => c.copy(query = x))
-      opt[String]("stopwordFile")
+      opt[String]("stopwordsFile")
         .text(s"filepath for a list of stopwords. Note: This must fit on a single machine." +
-          s"  default: ${defaultParams.stopwordFile}")
-        .action((x, c) => c.copy(stopwordFile = Option(x)))
+          s"  default: ${defaultParams.stopwordsFile}")
+        .action((x, c) => c.copy(stopwordsFile = Option(x)))
       opt[Seq[String]]("used_fields")
         .text(s"list of fields to use for LDA, if more than one they will be merged" +
           s"  default: ${defaultParams.used_fields}")
