@@ -6,6 +6,12 @@ Note: works with java 7 and 8 (not with jdk 9)
 
 sbt package
 
+## generation of a fat jar
+
+```bash
+export JAVA_OPTS="-Xms256m -Xmx4g"
+sbt assembly
+```
 ## Classes
 
 ### io.elegans.clustering.CalcLDA
@@ -14,6 +20,8 @@ sbt package
 calculate LDA with data from an elasticsearch index.
 Usage: LDA with ES data [options]
 
+  --help                   prints this usage text
+  --inputfile <value>      the file with sentences (one per line), when specified elasticsearch is not used  default: None
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
@@ -25,7 +33,7 @@ Usage: LDA with ES data [options]
   --maxTermsPerTopic <value>
                            the max number of terms per topic. default: 10
   --maxIterations <value>  number of iterations of learning. default: 100
-  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --stopwordsFile <value>  filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
   --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
   --max_topics_per_doc <value>
@@ -70,6 +78,12 @@ e.g.
 sbt "sparkSubmit --class io.elegans.clustering.CalcLDA -- --hostname elastic-0.getjenny.com --group_by_field conversation --search_path english/question --min_k 10 --max_k 30 --stopwordFile /tmp/english_stopwords.txt --outputDir /tmp/lda_results"
 ```
 
+#### run the program using the fat jar
+
+```bash
+spark-submit --class io.elegans.clustering.CalcLDA ./target/scala-2.11/clustering-assembly-0.1.jar --help
+```
+
 ### io.elegans.clustering.KMeansW2VClustering
 
 ```bash
@@ -77,20 +91,23 @@ calculate clusters with data from an elasticsearch index using w2v representatio
 Usage: Clustering with ES data [options]
 
   --help                   prints this usage text
+  --inputfile <value>      the file with sentences (one per line), when specified elasticsearch is not used  default: None
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
                            group the search results by field e.g. conversation, None => no grouping  default: None
   --search_path <value>    the search path on elasticsearch e.g. <index name>/<type name>  default: jenny-en-0/question
   --query <value>          a json string with the query  default: { "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }
-  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --stopwordsFile <value>  filepath for a list of stopwords. Note: This must fit on a single machine.  default: None
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
   --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
   --min_k <value>          min number of topics. default: 8
   --max_k <value>          max number of topics. default: 10
-  --maxIterations <value>  number of iterations of learning. default: 10
+  --maxIterations <value>  number of iterations of learning. default: 1000
   --inputW2VModel <value>  the input word2vec model
-  --avg                    this flag disable the vectors
+  --avg                    this flag enable the vectors
+  --tfidf                  this flag enable tfidf term weighting
+  --scale                  this flag enable vector scaling to 1
 ```
 
 ### io.elegans.clustering.TrainW2V
@@ -133,15 +150,16 @@ Train a W2V model taking input data from ES.
 Usage: Generate a reduced W2V model by selecting only the vectors of the words used in the dataset [options]
 
   --help                   prints this usage text
+  --inputfile <value>      the file with sentences (one per line), when specified elasticsearch is not used  default: None
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
                            group the search results by field e.g. conversation, None => no grouping  default: None
   --search_path <value>    the search path on elasticsearch e.g. <index name>/<type name>  default: jenny-en-0/question
   --query <value>          a json string with the query  default: { "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }
-  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --stopwordsFile <value>  filepath for a list of stopwords. Note: This must fit on a single machine.  default: None
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
-  --inputfile <value>      the file with the model
+  --inputmodel <value>     the file with the model
   --outputfile <value>     the output file  default: /tmp/w2v_model.txt
 ```
 
@@ -152,13 +170,14 @@ perform a similarity search using cosine vector as distance function
 Usage: Search similar sentences [options]
 
   --help                   prints this usage text
+  --inputfile <value>      the file with sentences (one per line), when specified elasticsearch is not used  default: None
   --hostname <value>       the hostname of the elasticsearch instance  default: localhost
   --port <value>           the port of the elasticsearch instance  default: 9200
   --group_by_field <value>
                            group the search results by field e.g. conversation, None => no grouping  default: None
   --search_path <value>    the search path on elasticsearch e.g. <index name>/<type name>  default: jenny-en-0/question
   --query <value>          a json string with the query  default: { "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }
-  --stopwordFile <value>   filepath for a list of stopwords. Note: This must fit on a single machine.  default: Some(stopwords/en_stopwords.txt)
+  --stopwordsFile <value>  filepath for a list of stopwords. Note: This must fit on a single machine.  default: None
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
   --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
   --inputW2VModel <value>  the input word2vec model
@@ -166,6 +185,7 @@ Usage: Search similar sentences [options]
                            the list of input sentences  default: ${defaultParams.input_sentences}
   --similarity_threshold <value>
                            cutoff threshold  default: ${defaultParams.similarity_threshold}
-  --avg                    this flag disable the vectors
+  --avg                    this flag enable the vectors
   --tfidf                  this flag enable tfidf term weighting
 ```
+
