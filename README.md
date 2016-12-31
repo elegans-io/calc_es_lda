@@ -2,7 +2,7 @@
 
 ## Build
 
-Note: works with java 7 and 8 (not with jdk 9)
+Note: works with java 7 and 8 (not with jdk 9) and elasticsearch 5.1.1
 
 sbt package
 
@@ -81,7 +81,7 @@ sbt "sparkSubmit --class io.elegans.clustering.CalcLDA -- --hostname elastic-0.g
 #### run the program using the fat jar
 
 ```bash
-spark-submit --class io.elegans.clustering.CalcLDA ./target/scala-2.11/clustering-assembly-0.1.jar --help
+spark-submit --class io.elegans.clustering.CalcLDA ./target/scala-2.11/clustering-assembly-master.jar --help
 ```
 
 ### io.elegans.clustering.KMeansW2VClustering

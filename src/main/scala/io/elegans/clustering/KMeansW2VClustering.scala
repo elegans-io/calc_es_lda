@@ -45,8 +45,9 @@ object KMeansW2VClustering {
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering")
 
-    if (! params.inputfile.isEmpty) {
+    if (params.inputfile.isEmpty) {
       conf.set("es.nodes.wan.only", "true")
+      conf.set("es.index.read.missing.as.empty", "yes")
       conf.set("es.nodes", params.hostname)
       conf.set("es.port", params.port)
       val query: String = params.query
@@ -62,7 +63,7 @@ object KMeansW2VClustering {
       case None => sc.broadcast(Set.empty[String]) /* set an empty string if Option variable is None */
     }
 
-    val docTerms = if (! params.inputfile.isEmpty) {
+    val docTerms = if (params.inputfile.isEmpty) {
       val documentTerms = loadData.loadDocumentsFromES(sc = sc, search_path = params.search_path,
         used_fields = params.used_fields, group_by_field = params.group_by_field).mapValues(x => {
         textProcessingUtils.tokenizeSentence(x, stopWords, 0)

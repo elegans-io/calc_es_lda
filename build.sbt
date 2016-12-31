@@ -2,24 +2,30 @@ import NativePackagerHelper._
 
 name := "clustering"
 
-version := "0.1"
+version := "master"
 
 organization := "io.elegans"
 
 scalaVersion := "2.11.8"
 
+
 resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
                   Resolver.bintrayRepo("hseeberger", "maven"))
 
-libraryDependencies ++= Seq(
-	"org.apache.spark" %% "spark-core" % "2.0.1" % "provided",
-	"org.apache.spark" %% "spark-mllib" % "2.0.1" % "provided",
-	"org.elasticsearch" % "elasticsearch-spark_2.11" % "2.4.0",
-	"edu.stanford.nlp" % "stanford-corenlp" % "3.6.0",
-	"edu.stanford.nlp" % "stanford-corenlp" % "3.6.0" classifier "models",
-	"com.github.scopt" %% "scopt" % "3.5.0"
-)
+//https://mvnrepository.com/artifact/org.elasticsearch
 
+libraryDependencies ++= {
+  val elastic_client_version = "5.1.1"
+  val spark_version = "2.0.2"
+  Seq(
+    "org.apache.spark" %% "spark-core" % spark_version % "provided",
+    "org.apache.spark" %% "spark-mllib" % spark_version % "provided",
+    "org.elasticsearch" % "elasticsearch-spark-20_2.11" % elastic_client_version,
+    "edu.stanford.nlp" % "stanford-corenlp" % "3.6.0",
+    "edu.stanford.nlp" % "stanford-corenlp" % "3.6.0" classifier "models",
+    "com.github.scopt" %% "scopt" % "3.5.0"
+  )
+}
 
 SparkSubmit.settings
 
