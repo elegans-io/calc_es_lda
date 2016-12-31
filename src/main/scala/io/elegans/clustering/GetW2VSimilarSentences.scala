@@ -38,7 +38,7 @@ object GetW2VSimilarSentences {
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering").set("spark.driver.maxResultSize", "16g")
 
-    if (! params.inputfile.isEmpty) {
+    if (params.inputfile.isEmpty) {
       conf.set("es.nodes.wan.only", "true")
       conf.set("es.nodes", params.hostname)
       conf.set("es.port", params.port)
@@ -57,7 +57,7 @@ object GetW2VSimilarSentences {
 
     val querySentences = sc.textFile(params.input_sentences).map(_.trim)
 
-    val docTerms = if (! params.inputfile.isEmpty) {
+    val docTerms = if (params.inputfile.isEmpty) {
       val documentTerms = loadData.loadDocumentsFromES(sc = sc, search_path = params.search_path,
         used_fields = params.used_fields, group_by_field = params.group_by_field).mapValues(x => {
         textProcessingUtils.tokenizeSentence(x, stopWords, 0)
