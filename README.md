@@ -84,6 +84,8 @@ sbt "sparkSubmit --class io.elegans.clustering.CalcLDA -- --hostname elastic-0.g
 spark-submit --class io.elegans.clustering.CalcLDA ./target/scala-2.11/clustering-assembly-master.jar --help
 ```
 
+You might want to use something like ` --driver-memory 8g` before `--class ....`.
+
 ### io.elegans.clustering.KMeansW2VClustering
 
 ```bash
