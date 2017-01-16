@@ -1,3 +1,4 @@
+
 aiemmin 
 aika
 aikaa
@@ -64,6 +65,11 @@ asioiden
 asioihin
 asioita
 asti
+auttaa
+auttaa
+auttaa
+auttaa
+auttaa
 avuksi
 avulla
 avun
@@ -88,6 +94,7 @@ ellemme
 ellen
 ellet
 ellette
+elus
 emme
 en
 enemmän
@@ -153,11 +160,15 @@ heissä
 heistä
 heitä
 helposti
+helsingin
 heti
 hetkellä
+heus
+heus
 hieman
 huolimatta
 huomenna
+huomenta
 hyvien
 hyviin
 hyviksi
@@ -240,6 +251,8 @@ joutuivat
 joutumaan
 joutuu
 joutuvat
+juha
+juttu
 juuri
 jälkeen
 jälleen
@@ -277,6 +290,8 @@ kanssamme
 kanssani
 kanssanne
 kanssasi
+kari
+katsotaanpa
 kauan
 kauemmas
 kautta
@@ -313,13 +328,14 @@ keskimäärin
 ketkä
 ketä
 kiito
+kiitokset
 kiitoksia
 kiitos
 kiitosa
-kiitoss
-kiitosta
 kiitoset
 kiitoskset
+kiitoss
+kiitosta
 kohti
 koko
 kokonaan
@@ -350,6 +366,7 @@ kuutta
 kyllä
 kymmenen
 kyse
+leppävaarassa
 liian
 liki
 lisäksi
@@ -366,6 +383,7 @@ lähtien
 läpi
 mahdollisimman
 mahdollista
+matti
 me
 meidän
 meille
@@ -387,6 +405,7 @@ menivät
 mennessä
 mennyt
 menossa
+mietin
 mihin
 mikin
 miksi
@@ -404,6 +423,7 @@ miten
 mitä
 mitään
 moi
+moikka
 molemmat
 mones
 monesti
@@ -420,6 +440,9 @@ muka
 mukaan
 mukaansa
 mukana
+mulla
+mun
+mut
 mutta
 muu
 muualla
@@ -438,6 +461,7 @@ myös
 myöskin
 myöskään
 myötä
+mä
 ne
 neljä
 neljän
@@ -446,6 +470,8 @@ niiden
 niin
 niistä
 niitä
+niman
+nimus
 noin
 nopeammin
 nopeasti
@@ -464,10 +490,12 @@ näitä
 nämä
 ohi
 oikein
+okei
 ole
 olemme
 olen
 olet
+oletko
 olette
 oleva
 olevan
@@ -481,6 +509,7 @@ olisin
 olisit
 olisitte
 olisivat
+olisus
 olit
 olitte
 olivat
@@ -510,6 +539,7 @@ on
 onkin
 onko
 ovat
+oy
 paikoittain
 paitsi
 pakosti
@@ -532,6 +562,7 @@ pieni
 pienin
 puolesta
 puolestaan
+päivänjatkoa
 päälle
 runsaasti
 saakka
@@ -552,6 +583,9 @@ satojen
 se
 seitsemän
 sekä
+selvä
+selvä
+selvä
 sen
 seuraavat
 siellä
@@ -597,10 +631,14 @@ takaisin
 takana
 takia
 tapauksessa
+tarja
 tavalla
 tavoitteena
 te
+teidän
+teillä
 tietysti
+timo
 todella
 toinen
 toisaalla
@@ -649,6 +687,7 @@ tuolla
 tuolloin
 tuolta
 tuonne
+turun
 tuskin
 tykö
 tähän
@@ -684,6 +723,7 @@ uusinta
 uuteen
 uutta
 vaan
+vaasan
 vai
 vaiheessa
 vaikea
@@ -717,6 +757,12 @@ voi
 voidaan
 voimme
 voin
+voinko
+voinko
+voinko
+voinko
+voinko
+voinko
 voisi
 voit
 voitte
@@ -752,6 +798,7 @@ yleensä
 ylemmäs
 yli
 ylös
+ympyrätalossa
 ympäri
 älköön
 älä
