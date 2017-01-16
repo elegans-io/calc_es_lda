@@ -19,21 +19,22 @@ object GetW2VSimilarSentences {
   lazy val loadData = new LoadData
 
   private case class Params(
-                             inputfile: Option[String] = None,
-                             hostname: String = "localhost",
-                             port: String = "9200",
-                             search_path: String = "jenny-en-0/question",
-                             query: String = """{ "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }""",
-                             used_fields: Seq[String] = Seq[String]("question", "answer"),
-                             group_by_field: Option[String] = None,
-                             outputDir: String = "/tmp",
-                             stopwordsFile: Option[String] = None,
-                             inputW2VModel: String = "",
-                             avg: Boolean = false,
-                             tfidf : Boolean = false,
-                             input_sentences : String = "",
-                             similarity_threshold : Double = 0.0
-                           )
+    inputfile: Option[String] = None,
+    hostname: String = "localhost",
+    port: String = "9200",
+    search_path: String = "jenny-en-0/question",
+    query: String = """{ "fields":["question", "answer", "conversation", "index_in_conversation", "_id" ] }""",
+    used_fields: Seq[String] = Seq[String]("question", "answer"),
+    group_by_field: Option[String] = None,
+    outputDir: String = "/tmp",
+    stopwordsFile: Option[String] = None,
+    inputW2VModel: String = "",
+    avg: Boolean = false,
+    tfidf : Boolean = false,
+    input_sentences : String = "",
+    similarity_threshold : Double = 0.0,
+    strInBase64: Boolean = false
+  )
 
   private def doClustering(params: Params) {
     val conf = new SparkConf().setAppName("W2V clustering").set("spark.driver.maxResultSize", "16g")
@@ -65,9 +66,14 @@ object GetW2VSimilarSentences {
       })
       documentTerms
     } else {
-      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
-        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
-      })
+      val documentTerms = params.strInBase64 match {
+        case false => loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+          textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+        })
+        case true => loadData.loadDocumentsFromFileBase64(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+          textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+        })
+      }
       documentTerms
     }
 
@@ -211,6 +217,10 @@ object GetW2VSimilarSentences {
         .action( (x, c) => c.copy(avg = true))
       opt[Unit]("tfidf").text("this flag enable tfidf term weighting")
         .action( (x, c) => c.copy(tfidf = true))
+      opt[Unit]("strInBase64")
+        .text(s"specify if the text is encoded in base64 (only supported by loading from file)" +
+          s"  default: ${defaultParams.strInBase64}")
+        .action((x, c) => c.copy(strInBase64 = true))
     }
 
     parser.parse(args, defaultParams) match {

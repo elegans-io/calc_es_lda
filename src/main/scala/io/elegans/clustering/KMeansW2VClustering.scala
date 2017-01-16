@@ -32,8 +32,9 @@ object KMeansW2VClustering {
     min_k: Int = 8,
     avg: Boolean = false,
     tfidf: Boolean = false,
-    scale: Boolean = false
-  )
+    scale: Boolean = false,
+    strInBase64: Boolean = false
+   )
 
   private def scaleTo1(v: Vector) : Vector = {
     val array = v.toDense.toArray
@@ -70,9 +71,14 @@ object KMeansW2VClustering {
       })
       documentTerms
     } else {
-      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
-        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
-      })
+      val documentTerms = params.strInBase64 match {
+        case false => loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+          textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+        })
+        case true => loadData.loadDocumentsFromFileBase64(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+          textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+        })
+      }
       documentTerms
     }
 
@@ -232,6 +238,10 @@ object KMeansW2VClustering {
         .action( (x, c) => c.copy(tfidf = true))
       opt[Unit]("scale").text("this flag enable vector scaling to 1")
         .action( (x, c) => c.copy(scale = true))
+      opt[Unit]("strInBase64")
+        .text(s"specify if the text is encoded in base64 (only supported by loading from file)" +
+          s"  default: ${defaultParams.strInBase64}")
+        .action((x, c) => c.copy(strInBase64 = true))
     }
 
     parser.parse(args, defaultParams) match {

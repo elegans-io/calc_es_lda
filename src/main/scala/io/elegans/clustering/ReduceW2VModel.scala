@@ -21,8 +21,9 @@ object ReduceW2VModel {
     inputmodel: String = "",
     group_by_field: Option[String] = None,
     outputfile: String = "/tmp/w2v_model.txt",
-    stopwordsFile: Option[String] = None
-  )
+    stopwordsFile: Option[String] = None,
+    strInBase64: Boolean = false
+   )
 
   private def doReduceW2V(params: Params) {
     val conf : SparkConf = new SparkConf().setAppName("ReduceW2VModel")
@@ -52,9 +53,14 @@ object ReduceW2VModel {
       })
       documentTerms
     } else {
-      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
-        textProcessingUtils.tokenizeSentence(x, stopWords, 0).toSet
-      })
+      val documentTerms = params.strInBase64 match {
+        case false => loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+            textProcessingUtils.tokenizeSentence(x, stopWords, 0).toSet
+          })
+        case true => loadData.loadDocumentsFromFileBase64(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+            textProcessingUtils.tokenizeSentence(x, stopWords, 0).toSet
+          })
+      }
       documentTerms
     }
 
@@ -119,6 +125,10 @@ object ReduceW2VModel {
         .text(s"the output file" +
           s"  default: ${defaultParams.outputfile}")
         .action((x, c) => c.copy(outputfile = x))
+      opt[Unit]("strInBase64")
+        .text(s"specify if the text is encoded in base64 (only supported by loading from file)" +
+          s"  default: ${defaultParams.strInBase64}")
+        .action((x, c) => c.copy(strInBase64 = true))
     }
 
     parser.parse(args, defaultParams) match {
