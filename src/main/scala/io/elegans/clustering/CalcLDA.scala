@@ -30,7 +30,9 @@ object CalcLDA {
     outputDir: String = "/tmp",
     stopwordsFile: Option[String] = Option("stopwords/en_stopwords.txt"),
     maxTermsPerTopic: Int = 10,
-    max_topics_per_doc: Int = 10)
+    max_topics_per_doc: Int = 10,
+    strInBase64: Boolean = false
+  )
 
   private def doLDA(params: Params) {
     val conf = new SparkConf().setAppName("LDA from ES data")
@@ -60,9 +62,14 @@ object CalcLDA {
       })
       documentTerms
     } else {
-      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
-        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
-      })
+      val documentTerms = params.strInBase64 match {
+        case false => loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+            textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+          })
+        case true => loadData.loadDocumentsFromFileBase64(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+            textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+          })
+      }
       documentTerms
     }
 
@@ -239,6 +246,10 @@ object CalcLDA {
         .text(s"write the first n topic classifications per document" +
           s"  default: ${defaultParams.max_topics_per_doc}")
         .action((x, c) => c.copy(max_topics_per_doc = x))
+      opt[Unit]("strInBase64")
+        .text(s"specify if the text is encoded in base64 (only supported by loading from file)" +
+          s"  default: ${defaultParams.strInBase64}")
+        .action((x, c) => c.copy(strInBase64 = true))
     }
 
     parser.parse(args, defaultParams) match {

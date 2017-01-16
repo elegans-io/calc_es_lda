@@ -3,15 +3,32 @@ package io.elegans.clustering
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.elasticsearch.spark._
+import org.apache.commons.codec.binary.Base64
+import org.apache.commons.math3.analysis.function.Identity
 
 class LoadData {
 
   def loadDocumentsFromFile(sc: SparkContext, input_path: String): RDD[(String, String)] = {
     val inputfile = sc.textFile(input_path).map(_.trim) /* read the input file in textual format */
     /* process the lines of the input file, assigning to each line a progressive ID*/
+
     val tokenizedSentences = inputfile.zipWithIndex.map( line => {
       val original_string = line._1 /* the original string as is on file */
-      val id = line._2.toString /* the unique sentence id converted to string */
+      val id : String = line._2.toString /* the unique sentence id converted to string */
+      (id, original_string)
+    })
+    tokenizedSentences
+  }
+
+  def loadDocumentsFromFileBase64(sc: SparkContext, input_path: String): RDD[(String, String)] = {
+    val inputfile = sc.textFile(input_path).map(_.trim) /* read the input file in textual format */
+    /* process the lines of the input file, assigning to each line a progressive ID*/
+
+    val tokenizedSentences = inputfile.zipWithIndex.map( line => {
+      val bytes: Array[Byte] = line._1.getBytes
+      val decoded : Array[Byte] = Base64.decodeBase64(bytes)
+      val original_string = new String(decoded, "utf-8") /* the original string as is on file */
+      val id : String = line._2.toString /* the unique sentence id converted to string */
       (id, original_string)
     })
     tokenizedSentences

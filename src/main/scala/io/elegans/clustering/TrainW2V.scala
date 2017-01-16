@@ -23,7 +23,8 @@ object TrainW2V {
     stopwordsFile: Option[String] = Option("stopwords/en_stopwords.txt"),
     vector_size: Int = 300,
     word_window_size: Int = 5,
-    learningRate: Double = 0.025
+    learningRate: Double = 0.025,
+    strInBase64: Boolean = false
   )
 
   private def doTrainW2V(params: Params) {
@@ -55,9 +56,14 @@ object TrainW2V {
       })
       documentTerms
     } else {
-      val documentTerms = loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
-        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
-      })
+      val documentTerms = params.strInBase64 match {
+        case false => loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+          textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+        })
+        case true => loadData.loadDocumentsFromFileBase64(sc = sc, input_path = params.inputfile.get).mapValues(x => {
+          textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+        })
+      }
       documentTerms
     }
 
@@ -125,6 +131,10 @@ object TrainW2V {
         .text(s"the learningRate" +
           s"  default: ${defaultParams.learningRate}")
         .action((x, c) => c.copy(learningRate = x))
+      opt[Unit]("strInBase64")
+        .text(s"specify if the text is encoded in base64 (only supported by loading from file)" +
+          s"  default: ${defaultParams.strInBase64}")
+        .action((x, c) => c.copy(strInBase64 = true))
     }
 
     parser.parse(args, defaultParams) match {

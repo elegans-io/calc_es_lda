@@ -38,6 +38,7 @@ Usage: LDA with ES data [options]
   --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp
   --max_topics_per_doc <value>
                            write the first n topic classifications per document  default: 10
+  --strInBase64            specify if the text is encoded in base64 (only supported by loading from file)  default: false
 ```
 
 #### Output
@@ -110,6 +111,7 @@ Usage: Clustering with ES data [options]
   --avg                    this flag enable the vectors
   --tfidf                  this flag enable tfidf term weighting
   --scale                  this flag enable vector scaling to 1
+  --strInBase64            specify if the text is encoded in base64 (only supported by loading from file)  default: false
 ```
 
 ### io.elegans.clustering.TrainW2V
@@ -132,6 +134,7 @@ Usage: Train a W2V model [options]
   --word_window_size <value>
                            the word window size  default: 5
   --learningRate <value>   the learningRate  default: 0.025
+  --strInBase64            specify if the text is encoded in base64 (only supported by loading from file)  default: false
 ```
 
 ### io.elegans.clustering.W2VModelToSparkFormat
@@ -163,6 +166,7 @@ Usage: Generate a reduced W2V model by selecting only the vectors of the words u
   --used_fields <value>    list of fields to use for LDA, if more than one they will be merged  default: List(question, answer)
   --inputmodel <value>     the file with the model
   --outputfile <value>     the output file  default: /tmp/w2v_model.txt
+  --strInBase64            specify if the text is encoded in base64 (only supported by loading from file)  default: false
 ```
 
 ### io.elegans.clustering.GetW2VSimilarSentences
@@ -189,5 +193,6 @@ Usage: Search similar sentences [options]
                            cutoff threshold  default: ${defaultParams.similarity_threshold}
   --avg                    this flag enable the vectors
   --tfidf                  this flag enable tfidf term weighting
+  --strInBase64            specify if the text is encoded in base64 (only supported by loading from file)  default: false
 ```
 
