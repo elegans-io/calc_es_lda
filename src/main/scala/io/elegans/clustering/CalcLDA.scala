@@ -31,7 +31,8 @@ object CalcLDA {
     stopwordsFile: Option[String] = Option("stopwords/en_stopwords.txt"),
     maxTermsPerTopic: Int = 10,
     max_topics_per_doc: Int = 10,
-    strInBase64: Boolean = false
+    strInBase64: Boolean = false,
+    skip_words_shorter: Int = 2
   )
 
   private def doLDA(params: Params) {
@@ -58,16 +59,16 @@ object CalcLDA {
     val docTerms = if (params.inputfile.isEmpty) {
       val documentTerms = loadData.loadDocumentsFromES(sc = sc, search_path = params.search_path,
         used_fields = params.used_fields, group_by_field = params.group_by_field).mapValues(x => {
-        textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+        textProcessingUtils.tokenizeSentence(x, stopWords, params.skip_words_shorter)
       })
       documentTerms
     } else {
       val documentTerms = params.strInBase64 match {
         case false => loadData.loadDocumentsFromFile(sc = sc, input_path = params.inputfile.get).mapValues(x => {
-            textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+            textProcessingUtils.tokenizeSentence(x, stopWords, params.skip_words_shorter)
           })
         case true => loadData.loadDocumentsFromFileBase64(sc = sc, input_path = params.inputfile.get).mapValues(x => {
-            textProcessingUtils.tokenizeSentence(x, stopWords, 0)
+            textProcessingUtils.tokenizeSentence(x, stopWords, params.skip_words_shorter)
           })
       }
       documentTerms
@@ -250,6 +251,10 @@ object CalcLDA {
         .text(s"specify if the text is encoded in base64 (only supported by loading from file)" +
           s"  default: ${defaultParams.strInBase64}")
         .action((x, c) => c.copy(strInBase64 = true))
+      opt[Int]("skip_words_shorter")
+        .text(s"skip token with a length shorter than the provided value" +
+          s"  default: ${defaultParams.skip_words_shorter}")
+        .action((x, c) => c.copy(skip_words_shorter = x))
     }
 
     parser.parse(args, defaultParams) match {
