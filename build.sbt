@@ -21,9 +21,10 @@ libraryDependencies ++= {
     "org.apache.spark" %% "spark-core" % spark_version % "provided",
     "org.apache.spark" %% "spark-mllib" % spark_version % "provided",
     "org.elasticsearch" % "elasticsearch-spark-20_2.11" % elastic_client_version,
-    "edu.stanford.nlp" % "stanford-corenlp" % "3.6.0",
-    "edu.stanford.nlp" % "stanford-corenlp" % "3.6.0" classifier "models",
-    "com.github.scopt" %% "scopt" % "3.5.0"
+    "edu.stanford.nlp" % "stanford-corenlp" % "3.7.0",
+    "edu.stanford.nlp" % "stanford-corenlp" % "3.7.0" classifier "models",
+    "com.github.scopt" %% "scopt" % "3.5.0",
+    "info.bliki.wiki" % "bliki-core" % "3.1.0"
   )
 }
 
