@@ -2,7 +2,7 @@
 
 ## Build
 
-Note: works with java 7 and 8 (not with jdk 9) and elasticsearch 5.1.1
+Note: works with java 7 and 8 (not with jdk 9) and elasticsearch 5.2.2
 
 sbt package
 
@@ -194,5 +194,20 @@ Usage: Search similar sentences [options]
   --avg                    this flag enable the vectors
   --tfidf                  this flag enable tfidf term weighting
   --strInBase64            specify if the text is encoded in base64 (only supported by loading from file)  default: false
+```
+
+### io.elegans.clustering.GetW2VSimilarSentences
+
+```bash
+calculate term frequency.
+Usage: Tokenize terms and count term frequency from a set of files [options]
+
+  --help                   prints this usage text
+  --inputfile <value>      the path e.g. tmp/dir  default: None
+  --appname <value>        application name  default: CalcTerm freq
+  --outputDir <value>      the where to store the output files: topics and document per topics  default: /tmp/calc_freq_output
+  --levels <value>         the levels where to search for files e.g. for level=2 => tmp/dir/*/*  default: 3
+  --numpartitions <value>  the number of partitions reading files  default: 1000
+  --minfreq <value>        remove words with a frequency less that minfreq  default: 0
 ```
 

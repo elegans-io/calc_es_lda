@@ -15,15 +15,16 @@ resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/re
 //https://mvnrepository.com/artifact/org.elasticsearch
 
 libraryDependencies ++= {
-  val elastic_client_version = "5.1.1"
+  val elastic_client_version = "5.2.2"
   val spark_version = "2.0.2"
   Seq(
     "org.apache.spark" %% "spark-core" % spark_version % "provided",
     "org.apache.spark" %% "spark-mllib" % spark_version % "provided",
     "org.elasticsearch" % "elasticsearch-spark-20_2.11" % elastic_client_version,
-    "edu.stanford.nlp" % "stanford-corenlp" % "3.6.0",
-    "edu.stanford.nlp" % "stanford-corenlp" % "3.6.0" classifier "models",
-    "com.github.scopt" %% "scopt" % "3.5.0"
+    "edu.stanford.nlp" % "stanford-corenlp" % "3.7.0",
+    "edu.stanford.nlp" % "stanford-corenlp" % "3.7.0" classifier "models",
+    "com.github.scopt" %% "scopt" % "3.5.0",
+    "info.bliki.wiki" % "bliki-core" % "3.1.0"
   )
 }
 
@@ -45,5 +46,5 @@ assemblyMergeStrategy in assembly := {
 	case x => MergeStrategy.first
 }
 
-licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
+licenses := Seq(("GPLv2", url("https://www.gnu.org/licenses/old-licenses/gpl-2.0.md")))
 
