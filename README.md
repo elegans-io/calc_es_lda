@@ -2,7 +2,7 @@
 
 ## Build
 
-Note: works with java 7 and 8 (not with jdk 9) and elasticsearch 5.1.1
+Note: works with java 7 and 8 (not with jdk 9) and elasticsearch 5.2.2
 
 sbt package
 
