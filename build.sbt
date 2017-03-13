@@ -46,5 +46,5 @@ assemblyMergeStrategy in assembly := {
 	case x => MergeStrategy.first
 }
 
-licenses := Seq(("GPLv3", url("https://www.gnu.org/licenses/gpl-3.0.md")))
+licenses := Seq(("GPLv2", url("https://www.gnu.org/licenses/old-licenses/gpl-2.0.md")))
 
