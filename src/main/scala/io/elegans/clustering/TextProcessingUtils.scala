@@ -19,7 +19,7 @@ class TextProcessingUtils {
     */
   def createNLPPipeline(): StanfordCoreNLP = {
     val props = new Properties()
-    props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
+    props.setProperty("annotators", "tokenize, ssplit")
     val pipeline: StanfordCoreNLP = new StanfordCoreNLP(props)
     pipeline
   }
@@ -49,10 +49,10 @@ class TextProcessingUtils {
     val sentences = doc.get(classOf[SentencesAnnotation])
     for (sentence <- sentences;
          token <- sentence.get(classOf[TokensAnnotation])) {
-      val lemma = token.getString(classOf[LemmaAnnotation])
+      val lemma: String = token.get(classOf[TextAnnotation])
       val lc_lemma = lemma.toLowerCase
       if (lc_lemma.length > min_token_length &&  !stopWords.value.contains(lc_lemma) && isOnlyLetters(lc_lemma)) {
-        lemmas += lc_lemma.toLowerCase
+        lemmas += lc_lemma
       }
     }
     lemmas.toList
