@@ -15,8 +15,8 @@ resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/re
 //https://mvnrepository.com/artifact/org.elasticsearch
 
 libraryDependencies ++= {
-  val elastic_client_version = "5.2.2"
-  val spark_version = "2.0.2"
+  val elastic_client_version = "5.4.2"
+  val spark_version = "2.1.1"
   Seq(
     "org.apache.spark" %% "spark-core" % spark_version % "provided",
     "org.apache.spark" %% "spark-mllib" % spark_version % "provided",
